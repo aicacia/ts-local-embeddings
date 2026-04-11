@@ -34,6 +34,31 @@ function getNowMs(): number {
 	return Date.now();
 }
 
+function formatDuration(durationMs: number): string {
+	if (!Number.isFinite(durationMs) || durationMs < 0) {
+		return "0ms";
+	}
+
+	if (durationMs < 1000) {
+		return `${durationMs.toFixed(2)}ms`;
+	}
+
+	const totalSeconds = durationMs / 1000;
+	if (totalSeconds < 60) {
+		return `${totalSeconds.toFixed(2)}s`;
+	}
+
+	const totalMinutes = Math.floor(totalSeconds / 60);
+	const remainingSeconds = totalSeconds % 60;
+	if (totalMinutes < 60) {
+		return `${totalMinutes}m ${remainingSeconds.toFixed(1)}s`;
+	}
+
+	const totalHours = Math.floor(totalMinutes / 60);
+	const remainingMinutes = totalMinutes % 60;
+	return `${totalHours}h ${remainingMinutes}m ${remainingSeconds.toFixed(0)}s`;
+}
+
 onMount(() => {
 	let disposed = false;
 
@@ -114,7 +139,7 @@ async function runSearch() {
 	<p class="mt-1 text-slate-600">
 		{documents.length} documents indexed in memory
 		{#if indexDurationMs !== null}
-			in {indexDurationMs.toFixed(2)}ms
+			in {formatDuration(indexDurationMs)}
 		{/if}
 	</p>
 
@@ -160,7 +185,7 @@ async function runSearch() {
 	{/if}
 
 	{#if lastSearchDurationMs !== null}
-		<p class="mt-6 text-sm text-slate-600">Results in {lastSearchDurationMs.toFixed(2)}ms.</p>
+		<p class="mt-6 text-sm text-slate-600">Results in {formatDuration(lastSearchDurationMs)}.</p>
 	{/if}
 
 	<section class="mt-8 flex min-h-0 flex-1 flex-col">
