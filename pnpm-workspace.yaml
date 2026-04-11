@@ -1,0 +1,12 @@
+packages:
+  - '.'
+  - 'example'
+
+onlyBuiltDependencies:
+  - esbuild
+  - onnxruntime-node
+  - protobufjs
+  - sharp
+
+ignoredBuiltDependencies:
+  - '@biomejs/biome'

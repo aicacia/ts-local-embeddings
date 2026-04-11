@@ -1,0 +1,25 @@
+{
+	"compilerOptions": {
+		"importHelpers": true,
+		"target": "ES2017",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"rootDir": "src",
+		"declaration": true,
+		"outDir": "esm",
+		"declarationDir": "types",
+		"strict": true,
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"lib": ["ESNext", "DOM"]
+	},
+	"include": ["src"],
+	"exclude": ["src/**/*.test.*", "src/**/*.benchmark.*"],
+	"typedocOptions": {
+		"entryPoints": ["src/index.ts"],
+		"out": "docs",
+		"excludeExternals": true,
+		"excludePrivate": true,
+		"excludeInternal": true
+	}
+}

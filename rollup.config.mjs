@@ -1,0 +1,29 @@
+import resolve from "@rollup/plugin-node-resolve";
+import commonjs from "@rollup/plugin-commonjs";
+import terser from "@rollup/plugin-terser";
+import esmImportToUrl from "rollup-plugin-esm-import-to-url";
+
+export default [
+	{
+		input: "esm/index.js",
+		output: [
+			{
+				file: "browser/index.js",
+				format: "es",
+				sourcemap: true,
+				plugins: [terser()],
+			},
+		],
+		plugins: [
+			esmImportToUrl({
+				imports: {
+					tslib: "https://unpkg.com/tslib@2/tslib.es6.js",
+				},
+			}),
+			resolve({ browser: true }),
+			commonjs({
+				transformMixedEsModules: true,
+			}),
+		],
+	},
+];
