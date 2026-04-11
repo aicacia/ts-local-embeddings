@@ -77,7 +77,9 @@ function isFiniteRequestId(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value);
 }
 
-function isWorkerInitPayload(value: unknown): value is WorkerRequestMap["init"] {
+function isWorkerInitPayload(
+	value: unknown,
+): value is WorkerRequestMap["init"] {
 	return isObject(value);
 }
 
@@ -207,7 +209,7 @@ function isDocumentsEmbeddedPayload(
 			(vector) =>
 				Array.isArray(vector) &&
 				vector.every(
-					entry => typeof entry === "number" && Number.isFinite(entry),
+					(entry) => typeof entry === "number" && Number.isFinite(entry),
 				),
 		)
 	);
@@ -220,7 +222,7 @@ function isQueryEmbeddedPayload(
 		isObject(value) &&
 		Array.isArray(value.embedding) &&
 		value.embedding.every(
-			entry => typeof entry === "number" && Number.isFinite(entry),
+			(entry) => typeof entry === "number" && Number.isFinite(entry),
 		)
 	);
 }

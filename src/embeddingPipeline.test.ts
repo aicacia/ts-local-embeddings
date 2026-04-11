@@ -5,7 +5,10 @@ import {
 	type EmbeddingPipelineEvent,
 } from "./embeddingPipeline.js";
 
-type TestTokenizer = (documents: string[], options: { max_length: number }) => {
+type TestTokenizer = (
+	documents: string[],
+	options: { max_length: number },
+) => {
 	documents: string[];
 	options: { max_length: number };
 };
@@ -60,13 +63,13 @@ function createRuntime(options?: {
 		? {
 				model_max_length: modelMaxLength,
 				_call: tokenizerFn,
-		  }
+			}
 		: tokenizerWithConfig;
 	const model = options?.modelAsObjectCall
 		? {
 				config: { max_position_embeddings: modelMaxLength },
 				_call: modelFn,
-		  }
+			}
 		: modelWithConfig;
 
 	return { tokenizer, model };
@@ -122,7 +125,11 @@ test("embeddingPipeline handles callable and _call runtimes", async (assert) => 
 	const functionResult = await functionPipeline.embedDocuments(["one", "two"]);
 	const objectResult = await objectPipeline.embedDocuments(["one", "two"]);
 
-	assert.deepEqual(functionResult, objectResult, "supports both invocation styles");
+	assert.deepEqual(
+		functionResult,
+		objectResult,
+		"supports both invocation styles",
+	);
 	assert.end();
 });
 
@@ -160,7 +167,8 @@ test("embeddingPipeline query path requires exactly one embedding", async (asser
 		assert.fail("expected embedQuery to throw");
 	} catch (error) {
 		assert.ok(
-			error instanceof Error && /produced 2 vectors for 1 documents/i.test(error.message),
+			error instanceof Error &&
+				/produced 2 vectors for 1 documents/i.test(error.message),
 			"throws when query path receives more than one vector",
 		);
 	}
@@ -170,7 +178,10 @@ test("embeddingPipeline query path requires exactly one embedding", async (asser
 test("embeddingPipeline multibyte estimation is stricter than ascii", (assert) => {
 	const maxInputTokens = 128;
 	const asciiEstimate = estimateDocumentTokenLength("abcdefgh", maxInputTokens);
-	const multibyteEstimate = estimateDocumentTokenLength("你好世界", maxInputTokens);
+	const multibyteEstimate = estimateDocumentTokenLength(
+		"你好世界",
+		maxInputTokens,
+	);
 
 	assert.equal(asciiEstimate, 2, "ascii estimate uses ~4 chars/token");
 	assert.equal(multibyteEstimate, 2, "multibyte estimate uses ~2 chars/token");

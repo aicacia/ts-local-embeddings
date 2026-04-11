@@ -7,12 +7,18 @@ import {
 } from "./embeddingPipeline.js";
 
 export type { LocalEmbeddingsRuntime } from "./embeddingPipeline.js";
-export type { EmbeddingPipelineEvent, EmbeddingPipelineHooks } from "./embeddingPipeline.js";
+export type {
+	EmbeddingPipelineEvent,
+	EmbeddingPipelineHooks,
+} from "./embeddingPipeline.js";
 
 export class LocalEmbeddings implements EmbeddingsInterface<number[]> {
 	#pipeline: EmbeddingPipeline;
 
-	constructor(runtime: LocalEmbeddingsRuntime, hooks: EmbeddingPipelineHooks = {}) {
+	constructor(
+		runtime: LocalEmbeddingsRuntime,
+		hooks: EmbeddingPipelineHooks = {},
+	) {
 		this.#pipeline = createEmbeddingPipeline(runtime, hooks);
 	}
 

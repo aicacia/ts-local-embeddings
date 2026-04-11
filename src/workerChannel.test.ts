@@ -124,7 +124,9 @@ test("WorkerChannel timeout rejects hung requests and late responses are ignored
 	const channel = new WorkerChannel(worker as unknown as Worker, {
 		requestTimeoutMs: 10,
 	});
-	const requestPromise = channel.sendRequest("embedQuery", { document: "stuck" });
+	const requestPromise = channel.sendRequest("embedQuery", {
+		document: "stuck",
+	});
 	const [request] = extractRequests(worker);
 
 	let timeoutError: unknown;
@@ -152,7 +154,9 @@ test("WorkerChannel timeout rejects hung requests and late responses are ignored
 test("WorkerChannel surfaces serialized error payload metadata", async (assert) => {
 	const worker = new FakeWorker();
 	const channel = new WorkerChannel(worker as unknown as Worker);
-	const requestPromise = channel.sendRequest("embedQuery", { document: "error" });
+	const requestPromise = channel.sendRequest("embedQuery", {
+		document: "error",
+	});
 	const [request] = extractRequests(worker);
 
 	const payload: SerializedError = {

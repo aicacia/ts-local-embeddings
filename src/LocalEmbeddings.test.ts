@@ -34,7 +34,14 @@ test("LocalEmbeddings delegates to runtime pipeline", async (assert) => {
 	const docs = await embeddings.embedDocuments(["one", "three"]);
 	const query = await embeddings.embedQuery("query");
 
-	assert.deepEqual(docs, [[3, 16], [5, 16]], "embedDocuments delegates correctly");
+	assert.deepEqual(
+		docs,
+		[
+			[3, 16],
+			[5, 16],
+		],
+		"embedDocuments delegates correctly",
+	);
 	assert.deepEqual(query, [5, 16], "embedQuery delegates correctly");
 	assert.equal(tokenizerCalls, 2, "tokenizer invoked once per API call");
 	assert.equal(modelCalls, 2, "model invoked once per API call");

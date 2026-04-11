@@ -129,7 +129,8 @@ export class IndexedDbStoreGateway {
 
 			request.onupgradeneeded = (event) => {
 				const previousVersion = event.oldVersion;
-				const nextVersion = event.newVersion ?? VECTOR_STORE_SCHEMA.currentVersion;
+				const nextVersion =
+					event.newVersion ?? VECTOR_STORE_SCHEMA.currentVersion;
 				applyMigrations(request, previousVersion, nextVersion, this.#storeName);
 			};
 
@@ -149,7 +150,9 @@ export class IndexedDbStoreGateway {
 
 			request.onerror = () => {
 				this.#dbPromise = null;
-				reject(request.error ?? new Error("Failed to open IndexedDB database."));
+				reject(
+					request.error ?? new Error("Failed to open IndexedDB database."),
+				);
 			};
 		});
 
@@ -193,7 +196,9 @@ export class IndexedDbStoreGateway {
 			const directMatches = await Promise.all(
 				contentHashes.map(async (contentHash, index) => {
 					const matches = await requestToPromise(
-						store.index(VECTOR_STORE_SCHEMA.contentHashIndex).getAll(contentHash),
+						store
+							.index(VECTOR_STORE_SCHEMA.contentHashIndex)
+							.getAll(contentHash),
 					);
 
 					return (

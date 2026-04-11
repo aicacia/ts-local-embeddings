@@ -19,13 +19,16 @@ function countChars(value: string): [number, number] {
 }
 
 const embeddings = {
-	embedDocuments: async (documents: string[]) => documents.map((doc) => countChars(doc)),
+	embedDocuments: async (documents: string[]) =>
+		documents.map((doc) => countChars(doc)),
 	embedQuery: async (document: string) => countChars(document),
 };
 
 test("IndexedDBVectorStore addDocuments and similarity search work through gateway", async (assert) => {
 	installFakeIndexedDb();
-	const store = new IndexedDBVectorStore(embeddings, { dbName: uniqueDbName() });
+	const store = new IndexedDBVectorStore(embeddings, {
+		dbName: uniqueDbName(),
+	});
 
 	await store.addDocuments([
 		new Document({ pageContent: "aaaa" }),

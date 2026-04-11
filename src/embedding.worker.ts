@@ -138,7 +138,9 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 				const runtimeEmbeddings = await getInitializedEmbeddings();
 				activeProgressRequestId = request.requestId;
 				try {
-					const result = await runtimeEmbeddings.embedDocuments(request.payload.documents);
+					const result = await runtimeEmbeddings.embedDocuments(
+						request.payload.documents,
+					);
 					post({
 						type: "documentsEmbedded",
 						requestId: request.requestId,

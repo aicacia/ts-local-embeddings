@@ -37,7 +37,7 @@ class FakeWorker {
 
 			switch (request.type) {
 				case "init": {
-						this.lastInitOptions = request.payload.options;
+					this.lastInitOptions = request.payload.options;
 					this.#initAttempts += 1;
 					if (this.#options.failFirstInit && this.#initAttempts === 1) {
 						this.onmessage({
@@ -82,17 +82,17 @@ class FakeWorker {
 							},
 						},
 					} as MessageEvent<WorkerResponse>);
-							this.onmessage({
-								data: {
+					this.onmessage({
+						data: {
 							type: "documentsEmbedded",
-									requestId: request.requestId,
-									payload: {
+							requestId: request.requestId,
+							payload: {
 								embeddings: request.payload.documents.map((document) => [
 									document.length,
 								]),
-									},
-								},
-							} as MessageEvent<WorkerResponse>);
+							},
+						},
+					} as MessageEvent<WorkerResponse>);
 					return;
 				}
 				case "embedQuery": {
@@ -261,7 +261,8 @@ test("WorkerEmbeddings deserializes error metadata", async (assert) => {
 
 test("WorkerEmbeddings emits progress updates", async (assert) => {
 	const worker = new FakeWorker();
-	const events: Array<{ processedAfterBatch: number; totalDocuments: number }> = [];
+	const events: Array<{ processedAfterBatch: number; totalDocuments: number }> =
+		[];
 	const embeddings = new WorkerEmbeddings({
 		worker: worker as unknown as Worker,
 		onProgress: (progress) => {

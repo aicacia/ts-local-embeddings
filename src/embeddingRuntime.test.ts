@@ -44,8 +44,16 @@ test("loadEmbeddingRuntime supports injected loader and fallback recovery", asyn
 
 	assert.equal(runtime.modelId, "demo-model", "keeps resolved model id");
 	assert.equal(runtime.variant, "q8", "recovers to the next fallback");
-	assert.deepEqual(runtime.model, { model: "q8" }, "uses model from injected loader");
-	assert.deepEqual(runtime.tokenizer, { tokenizer: true }, "uses tokenizer from injected loader");
+	assert.deepEqual(
+		runtime.model,
+		{ model: "q8" },
+		"uses model from injected loader",
+	);
+	assert.deepEqual(
+		runtime.tokenizer,
+		{ tokenizer: true },
+		"uses tokenizer from injected loader",
+	);
 	assert.end();
 });
 
@@ -59,6 +67,9 @@ test("loadEmbeddingRuntime initializes model and tokenizer in parallel", async (
 	);
 	const elapsedMs = Date.now() - startedAt;
 
-	assert.ok(elapsedMs < 45, `loads model and tokenizer concurrently (${elapsedMs}ms)`);
+	assert.ok(
+		elapsedMs < 45,
+		`loads model and tokenizer concurrently (${elapsedMs}ms)`,
+	);
 	assert.end();
 });

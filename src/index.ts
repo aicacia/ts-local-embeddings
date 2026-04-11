@@ -34,4 +34,4 @@ export type {
 	IndexedDBVectorStoreArgs,
 } from "./IndexedDBVectorStore.js";
 
-export { setDebugLogging } from './debug.js';
+export { setDebugLogging } from "./debug.js";

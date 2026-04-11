@@ -69,7 +69,10 @@ async function sha256(input: string): Promise<string> {
 	).join("");
 }
 
-export function resolveRecordId(document: Document, fallbackIndex: number): string {
+export function resolveRecordId(
+	document: Document,
+	fallbackIndex: number,
+): string {
 	const metadataId = (document.metadata as { id?: unknown } | undefined)?.id;
 	if (typeof metadataId === "string" && metadataId.trim().length > 0) {
 		return metadataId;

@@ -77,16 +77,8 @@
 		"@langchain/core": "^1.1.39"
 	},
 	"nyc": {
-		"include": [
-			"src"
-		],
-		"exclude": [
-			"src/**/*.test.*",
-			"src/**/*.benchmark.*"
-		],
-		"extension": [
-			".ts",
-			".tsx"
-		]
+		"include": ["src"],
+		"exclude": ["src/**/*.test.*", "src/**/*.benchmark.*"],
+		"extension": [".ts", ".tsx"]
 	}
 }

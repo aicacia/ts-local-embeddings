@@ -16,7 +16,11 @@ test("resolveRuntimePolicy uses defaults when options are empty", (assert) => {
 		"onnx-community/embeddinggemma-300m-ONNX",
 		"defaults model id",
 	);
-	assert.equal(resolved.loaderArgs.localFilesOnly, false, "remote models enabled by default");
+	assert.equal(
+		resolved.loaderArgs.localFilesOnly,
+		false,
+		"remote models enabled by default",
+	);
 	assert.ok(resolved.modelFallbacks.length > 0, "defaults model fallback list");
 	assert.end();
 });
@@ -28,7 +32,11 @@ test("resolveRuntimePolicy propagates local_files_only and cache_dir", (assert) 
 		modelFallbacks: [{ dtype: "q8" }],
 	});
 
-	assert.equal(resolved.loaderArgs.localFilesOnly, true, "disables remote files");
+	assert.equal(
+		resolved.loaderArgs.localFilesOnly,
+		true,
+		"disables remote files",
+	);
 	assert.equal(
 		resolved.loaderArgs.pretrainedOptions.cache_dir,
 		"/tmp/models",

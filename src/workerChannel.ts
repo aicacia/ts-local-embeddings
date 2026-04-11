@@ -43,13 +43,13 @@ export class WorkerChannel {
 				this.#requestTimeoutMs === null
 					? null
 					: setTimeout(() => {
-						this.#pendingRequests.delete(requestId);
-						const error = new Error(
-							`Embedding worker request ${requestId} timed out after ${this.#requestTimeoutMs}ms.`,
-						);
-						error.name = "WorkerRequestTimeoutError";
-						reject(error);
-					}, this.#requestTimeoutMs);
+							this.#pendingRequests.delete(requestId);
+							const error = new Error(
+								`Embedding worker request ${requestId} timed out after ${this.#requestTimeoutMs}ms.`,
+							);
+							error.name = "WorkerRequestTimeoutError";
+							reject(error);
+						}, this.#requestTimeoutMs);
 
 			this.#pendingRequests.set(requestId, {
 				resolve,

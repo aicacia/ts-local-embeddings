@@ -34,7 +34,10 @@ export async function loadEmbeddingRuntime(
 ): Promise<EmbeddingRuntime> {
 	const policy = resolveRuntimePolicy(options);
 
-	const tokenizerPromise = loader.loadTokenizer(policy.modelId, policy.loaderArgs);
+	const tokenizerPromise = loader.loadTokenizer(
+		policy.modelId,
+		policy.loaderArgs,
+	);
 	const [{ model, variant }, tokenizer] = await Promise.all([
 		loadModelWithFallbacks(
 			policy.modelId,

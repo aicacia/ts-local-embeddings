@@ -5,7 +5,10 @@ import {
 	type StoredVectorRecord,
 } from "./vectorWritePipeline.js";
 
-function createDocument(pageContent: string, metadata: Record<string, unknown> = {}) {
+function createDocument(
+	pageContent: string,
+	metadata: Record<string, unknown> = {},
+) {
 	return new Document({ pageContent, metadata });
 }
 
@@ -73,7 +76,8 @@ test("vectorWritePipeline strict mode rejects repeated content vector mismatch",
 		assert.fail("expected strict determinism failure");
 	} catch (error) {
 		assert.ok(
-			error instanceof Error && /deterministic embedding guard/i.test(error.message),
+			error instanceof Error &&
+				/deterministic embedding guard/i.test(error.message),
 			"throws with deterministic guard message",
 		);
 	}
@@ -97,14 +101,14 @@ test("vectorWritePipeline reuses cached embeddings by content hash and space", a
 			contents.map((content, index) =>
 				index === 0
 					? {
-						id: "cached",
-						content,
-						embeddingSpace: "space-1",
-						contentHash: "h1",
-						cacheKey: "space-1:h1",
-						embedding: [42],
-						metadata: {},
-					  }
+							id: "cached",
+							content,
+							embeddingSpace: "space-1",
+							contentHash: "h1",
+							cacheKey: "space-1:h1",
+							embedding: [42],
+							metadata: {},
+						}
 					: null,
 			),
 		putRecords: async (records) => {
@@ -133,7 +137,8 @@ test("vectorWritePipeline record mapper is equivalent for addDocuments and addVe
 
 	const pipelineForDocuments = createVectorWritePipeline({
 		embeddings: {
-			embedDocuments: async (documents: string[]) => documents.map((d) => [d.length]),
+			embedDocuments: async (documents: string[]) =>
+				documents.map((d) => [d.length]),
 			embedQuery: async () => [0],
 		},
 		resolveEmbeddingSpace: async () => "space-1",
@@ -155,10 +160,7 @@ test("vectorWritePipeline record mapper is equivalent for addDocuments and addVe
 	});
 
 	await pipelineForDocuments.addDocuments(docs);
-	await pipelineForVectors.addVectors(
-		[[5], [4]],
-		docs,
-	);
+	await pipelineForVectors.addVectors([[5], [4]], docs);
 
 	assert.equal(writesFromDocuments.length, 2, "addDocuments writes 2 records");
 	assert.equal(writesFromVectors.length, 2, "addVectors writes 2 records");

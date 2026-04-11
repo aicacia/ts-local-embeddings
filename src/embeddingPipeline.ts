@@ -315,7 +315,9 @@ export function createEmbeddingPipeline(
 						processedAfterBatch: projectedDocumentsProcessed,
 						totalDocuments: documents.length,
 						progressPercent: Number(
-							((projectedDocumentsProcessed / documents.length) * 100).toFixed(1),
+							((projectedDocumentsProcessed / documents.length) * 100).toFixed(
+								1,
+							),
 						),
 					});
 				}

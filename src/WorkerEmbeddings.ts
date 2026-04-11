@@ -7,7 +7,10 @@ import type {
 	SerializedError,
 	WorkerSuccessResponse,
 } from "./embeddingWorkerProtocol.js";
-import { isSerializedError, isWorkerResponse } from "./embeddingWorkerProtocol.js";
+import {
+	isSerializedError,
+	isWorkerResponse,
+} from "./embeddingWorkerProtocol.js";
 import { WorkerChannel } from "./workerChannel.js";
 
 export type WorkerEmbeddingsOptions = {
