@@ -233,7 +233,7 @@ export class IndexedDBVectorStore {
 						toStoredVectorRecord({
 							id: resolvedIds[originalIndex],
 							document,
-								embeddingSpace,
+							embeddingSpace,
 							contentHash: contentHashes[originalIndex],
 							embedding,
 						}),

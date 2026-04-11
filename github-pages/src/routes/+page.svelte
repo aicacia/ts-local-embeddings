@@ -18,16 +18,19 @@ let indexing = $state(false);
 let searching = $state(false);
 let error = $state("");
 let matches = $state<Array<{ document: Document; score: number }>>([]);
-let filteredDocuments = $state<Array<{ document: Document; score: number | null }>>(
-	documents.map((document) => ({ document, score: null })),
-);
+let filteredDocuments = $state<
+	Array<{ document: Document; score: number | null }>
+>(documents.map((document) => ({ document, score: null })));
 let lastSearchDurationMs = $state<number | null>(null);
 let indexDurationMs = $state<number | null>(null);
 
 const modelPath = `${base === "/" ? "" : base}/models/`;
 
 function getNowMs(): number {
-	if (typeof performance !== "undefined" && typeof performance.now === "function") {
+	if (
+		typeof performance !== "undefined" &&
+		typeof performance.now === "function"
+	) {
 		return performance.now();
 	}
 
@@ -109,7 +112,10 @@ async function runSearch() {
 
 	if (!query.trim()) {
 		matches = [];
-		filteredDocuments = documents.map((document) => ({ document, score: null }));
+		filteredDocuments = documents.map((document) => ({
+			document,
+			score: null,
+		}));
 		lastSearchDurationMs = null;
 		return;
 	}

@@ -46,9 +46,12 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 				throw new Error("Web Workers are not available in this environment.");
 			}
 
-			this.#worker = new Worker(new URL("./embedding.worker.js", import.meta.url), {
-				type: "module",
-			});
+			this.#worker = new Worker(
+				new URL("./embedding.worker.js", import.meta.url),
+				{
+					type: "module",
+				},
+			);
 		}
 
 		this.#worker.onmessage = (event: MessageEvent<WorkerResponse>): void => {

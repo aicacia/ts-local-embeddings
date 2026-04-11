@@ -54,7 +54,14 @@ test("LocalEmbeddings embeds document arrays", async (assert) => {
 
 	const result = await embeddings.embedDocuments(["one", "three"]);
 
-	assert.deepEqual(result, [[3, 16], [5, 16]], "returns one vector per document");
+	assert.deepEqual(
+		result,
+		[
+			[3, 16],
+			[5, 16],
+		],
+		"returns one vector per document",
+	);
 	assert.end();
 });
 
@@ -93,7 +100,8 @@ test("LocalEmbeddings rejects malformed numeric vectors", async (assert) => {
 		assert.fail("expected embedDocuments to throw for malformed vectors");
 	} catch (error) {
 		assert.ok(
-			error instanceof Error && /non-numeric embedding vector/i.test(error.message),
+			error instanceof Error &&
+				/non-numeric embedding vector/i.test(error.message),
 			"throws when any embedding contains non-finite numeric values",
 		);
 	}
@@ -103,9 +111,14 @@ test("LocalEmbeddings rejects malformed numeric vectors", async (assert) => {
 test("LocalEmbeddings rejects wrong query embedding count", async (assert) => {
 	const runtime = createRuntime();
 	const wrongCountModel = Object.assign(
-		async (): Promise<{ sentence_embedding: { tolist: () => number[][] } }> => ({
+		async (): Promise<{
+			sentence_embedding: { tolist: () => number[][] };
+		}> => ({
 			sentence_embedding: {
-				tolist: () => [[1, 2], [3, 4]],
+				tolist: () => [
+					[1, 2],
+					[3, 4],
+				],
 			},
 		}),
 		{ config: { max_position_embeddings: 16 } },
@@ -121,7 +134,8 @@ test("LocalEmbeddings rejects wrong query embedding count", async (assert) => {
 		assert.fail("expected embedQuery to throw for invalid output length");
 	} catch (error) {
 		assert.ok(
-			error instanceof Error && /produced 2 vectors for 1 documents/i.test(error.message),
+			error instanceof Error &&
+				/produced 2 vectors for 1 documents/i.test(error.message),
 			"throws when query embedding response length is not exactly one",
 		);
 	}

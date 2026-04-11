@@ -1,6 +1,9 @@
 import test from "tape";
 import { WorkerEmbeddings } from "./WorkerEmbeddings.js";
-import type { WorkerRequest, WorkerResponse } from "./embeddingWorkerProtocol.js";
+import type {
+	WorkerRequest,
+	WorkerResponse,
+} from "./embeddingWorkerProtocol.js";
 
 type FakeWorkerOptions = {
 	failFirstInit?: boolean;
@@ -93,10 +96,16 @@ class FakeWorker {
 
 test("WorkerEmbeddings supports injected workers without global Worker", async (assert) => {
 	const worker = new FakeWorker();
-	const embeddings = new WorkerEmbeddings({ worker: worker as unknown as Worker });
+	const embeddings = new WorkerEmbeddings({
+		worker: worker as unknown as Worker,
+	});
 
 	const queryEmbedding = await embeddings.embedQuery("hello");
-	assert.deepEqual(queryEmbedding, [5], "embedQuery uses injected worker successfully");
+	assert.deepEqual(
+		queryEmbedding,
+		[5],
+		"embedQuery uses injected worker successfully",
+	);
 
 	embeddings.terminate();
 	assert.end();
@@ -104,7 +113,9 @@ test("WorkerEmbeddings supports injected workers without global Worker", async (
 
 test("WorkerEmbeddings recovers from transient init failures", async (assert) => {
 	const worker = new FakeWorker({ failFirstInit: true });
-	const embeddings = new WorkerEmbeddings({ worker: worker as unknown as Worker });
+	const embeddings = new WorkerEmbeddings({
+		worker: worker as unknown as Worker,
+	});
 
 	try {
 		await embeddings.embedQuery("first");
@@ -117,7 +128,11 @@ test("WorkerEmbeddings recovers from transient init failures", async (assert) =>
 	}
 
 	const secondAttempt = await embeddings.embedQuery("second");
-	assert.deepEqual(secondAttempt, [6], "second attempt re-initializes and succeeds");
+	assert.deepEqual(
+		secondAttempt,
+		[6],
+		"second attempt re-initializes and succeeds",
+	);
 
 	embeddings.terminate();
 	assert.end();

@@ -51,5 +51,4 @@ const generatedDocuments: Document<CorpusMetadata>[] = Array.from(
 	},
 );
 
-export const documents: Document<CorpusMetadata>[] =
-	generatedDocuments;
+export const documents: Document<CorpusMetadata>[] = generatedDocuments;
