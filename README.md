@@ -11,6 +11,10 @@ Browser-first local embedding utilities for:
 - Embedding documents in-process or via Web Worker
 - Storing vectors in IndexedDB with similarity search and MMR
 
+## Documentation
+
+Hosted API docs: https://aicacia.github.io/ts-local-embeddings/docs/
+
 ## Install
 
 ```bash
