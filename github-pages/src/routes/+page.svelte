@@ -89,9 +89,7 @@ onMount(() => {
 					indexedDocumentTotal = totalDocuments;
 					if (totalDocuments > 0) {
 						indexProgressPercent =
-							(progress.event.processedAfterBatch /
-								totalDocuments) *
-							100;
+							(progress.event.processedAfterBatch / totalDocuments) * 100;
 					} else {
 						indexProgressPercent = null;
 					}
