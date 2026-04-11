@@ -18,8 +18,21 @@ let indexing = $state(false);
 let searching = $state(false);
 let error = $state("");
 let matches = $state<Array<{ document: Document; score: number }>>([]);
+let filteredDocuments = $state<Array<{ document: Document; score: number | null }>>(
+	documents.map((document) => ({ document, score: null })),
+);
+let lastSearchDurationMs = $state<number | null>(null);
+let indexDurationMs = $state<number | null>(null);
 
 const modelPath = `${base === "/" ? "" : base}/models/`;
+
+function getNowMs(): number {
+	if (typeof performance !== "undefined" && typeof performance.now === "function") {
+		return performance.now();
+	}
+
+	return Date.now();
+}
 
 onMount(() => {
 	let disposed = false;
@@ -41,7 +54,9 @@ onMount(() => {
 
 			modelLoading = false;
 			indexing = true;
+			const indexingStartedAt = getNowMs();
 			await vectorStore.addDocuments(documents);
+			indexDurationMs = getNowMs() - indexingStartedAt;
 		} catch (err) {
 			error =
 				err instanceof Error
@@ -69,6 +84,8 @@ async function runSearch() {
 
 	if (!query.trim()) {
 		matches = [];
+		filteredDocuments = documents.map((document) => ({ document, score: null }));
+		lastSearchDurationMs = null;
 		return;
 	}
 
@@ -76,10 +93,14 @@ async function runSearch() {
 
 	searching = true;
 	error = "";
+	lastSearchDurationMs = null;
 
+	const startedAt = getNowMs();
 	try {
 		const results = await vectorStore.similaritySearchWithScore(query, topK);
 		matches = results.map(([document, score]) => ({ document, score }));
+		filteredDocuments = matches;
+		lastSearchDurationMs = getNowMs() - startedAt;
 	} catch (err) {
 		error = err instanceof Error ? err.message : "Search failed.";
 	} finally {
@@ -90,7 +111,12 @@ async function runSearch() {
 
 <div class="mx-auto flex h-full min-h-0 max-w-5xl flex-1 flex-col px-4 py-8">
 	<h1 class="text-3xl font-bold tracking-tight text-slate-900">Local Embeddings Search</h1>
-	<p class="mt-1 text-slate-600">{documents.length} documents indexed in memory</p>
+	<p class="mt-1 text-slate-600">
+		{documents.length} documents indexed in memory
+		{#if indexDurationMs !== null}
+			in {indexDurationMs.toFixed(2)}ms
+		{/if}
+	</p>
 
 	<div class="mt-5 grid items-end gap-3 md:grid-cols-[1fr_auto_auto]">
 		<input
@@ -133,32 +159,28 @@ async function runSearch() {
 		<p class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700">{error}</p>
 	{/if}
 
-	<section class="mt-8">
-		<h2 class="text-xl font-semibold text-slate-900">Best matches</h2>
-		{#if !modelLoading && !indexing && matches.length === 0}
-			<p class="mt-3 text-slate-600">No matches yet. Try a search query.</p>
-		{:else}
-			<ul class="mt-3 grid gap-2">
-				{#each matches as item (String(item.document.metadata?.id ?? item.document.pageContent))}
-					<li class="rounded-lg border border-slate-200 bg-white p-3">
-						<p class="text-slate-900">{item.document.pageContent}</p>
-						<small class="mt-2 block text-slate-500">
-							source: {String(item.document.metadata?.source ?? 'unknown')} | score:
-							{item.score.toFixed(4)}
-						</small>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</section>
+	{#if lastSearchDurationMs !== null}
+		<p class="mt-6 text-sm text-slate-600">Results in {lastSearchDurationMs.toFixed(2)}ms.</p>
+	{/if}
 
 	<section class="mt-8 flex min-h-0 flex-1 flex-col">
-		<h2 class="text-xl font-semibold text-slate-900">All documents</h2>
+		<h2 class="text-xl font-semibold text-slate-900">Documents</h2>
+		{#if !modelLoading && !indexing && query.trim() && filteredDocuments.length === 0}
+			<p class="mt-3 text-slate-600">No matches for this search query.</p>
+		{/if}
 		<ul class="mt-3 grid min-h-0 flex-1 gap-2 overflow-y-auto rounded-xl border border-slate-200 p-2">
-			{#each documents as document (String(document.metadata?.id ?? document.pageContent))}
+			{#each filteredDocuments as item (String(item.document.metadata?.id ?? item.document.pageContent))}
 				<li class="grid grid-cols-[auto_1fr] gap-2 rounded-lg border border-slate-200 bg-white p-3">
-					<strong class="text-slate-500">#{String(document.metadata?.id ?? '-')}</strong>
-					<span class="text-slate-900">{document.pageContent}</span>
+					<strong class="text-slate-500">#{String(item.document.metadata?.id ?? '-')}</strong>
+					<div class="min-w-0">
+						<span class="text-slate-900">{item.document.pageContent}</span>
+						{#if item.score !== null}
+							<small class="mt-1 block text-slate-500">
+								source: {String(item.document.metadata?.source ?? 'unknown')} | score:
+								{item.score.toFixed(4)}
+							</small>
+						{/if}
+					</div>
 				</li>
 			{/each}
 		</ul>

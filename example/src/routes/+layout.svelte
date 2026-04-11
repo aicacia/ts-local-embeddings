@@ -1,12 +1,12 @@
 <script lang="ts">
 import "../app.css";
-import favicon from "$lib/assets/favicon.svg";
+import faviconSvg from "$lib/assets/favicon.svg";
 
 const { children } = $props();
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" href={faviconSvg} />
 </svelte:head>
 
 <main class="flex h-svh max-w-svw overflow-hidden">

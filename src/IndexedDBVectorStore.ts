@@ -63,6 +63,24 @@ function createDocument(record: StoredVectorRecord): Document {
 	});
 }
 
+function toStoredVectorRecord(args: {
+	id: string;
+	document: Document;
+	contentHash: string;
+	embedding: number[];
+}): StoredVectorRecord {
+	const metadata =
+		(args.document.metadata as Record<string, unknown> | undefined) ?? {};
+
+	return {
+		id: args.id,
+		content: args.document.pageContent,
+		contentHash: args.contentHash,
+		embedding: args.embedding,
+		metadata,
+	};
+}
+
 function fallbackHash(input: string): string {
 	let hash = 5381;
 	for (let index = 0; index < input.length; index += 1) {
@@ -142,20 +160,19 @@ export class IndexedDBVectorStore {
 
 		for (let index = 0; index < documents.length; index += 1) {
 			const document = documents[index];
-			const metadata =
-				(document.metadata as Record<string, unknown> | undefined) ?? {};
 			const id = resolvedIds[index];
 			const contentHash = contentHashes[index];
 			const cachedRecord = cachedRecords[index];
 
 			if (cachedRecord) {
-				recordsToWrite.push({
-					id,
-					content: document.pageContent,
-					contentHash,
-					embedding: cachedRecord.embedding,
-					metadata,
-				});
+				recordsToWrite.push(
+					toStoredVectorRecord({
+						id,
+						document,
+						contentHash,
+						embedding: cachedRecord.embedding,
+					}),
+				);
 				continue;
 			}
 
@@ -196,14 +213,14 @@ export class IndexedDBVectorStore {
 
 				for (const originalIndex of group.indices) {
 					const document = documents[originalIndex];
-					recordsToWrite.push({
-						id: resolvedIds[originalIndex],
-						content: document.pageContent,
-						contentHash: contentHashes[originalIndex],
-						embedding,
-						metadata:
-							(document.metadata as Record<string, unknown> | undefined) ?? {},
-					});
+					recordsToWrite.push(
+						toStoredVectorRecord({
+							id: resolvedIds[originalIndex],
+							document,
+							contentHash: contentHashes[originalIndex],
+							embedding,
+						}),
+					);
 				}
 			}
 		}
@@ -237,17 +254,14 @@ export class IndexedDBVectorStore {
 			const document = documents[index];
 			const embedding = vectors[index] ?? [];
 			const id = resolvedIds[index];
-			const metadata =
-				(document.metadata as Record<string, unknown> | undefined) ?? {};
 			const contentHash = contentHashes[index];
 
-			const record: StoredVectorRecord = {
+			const record = toStoredVectorRecord({
 				id,
-				content: document.pageContent,
+				document,
 				contentHash,
 				embedding,
-				metadata,
-			};
+			});
 
 			store.put(record);
 		}
