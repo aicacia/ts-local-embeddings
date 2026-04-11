@@ -19,7 +19,11 @@ export type {
 } from "./embeddingWorkerProtocol.js";
 
 export { LocalEmbeddings } from "./LocalEmbeddings.js";
-export type { LocalEmbeddingsRuntime } from "./LocalEmbeddings.js";
+export type {
+	LocalEmbeddingsRuntime,
+	EmbeddingPipelineEvent,
+	EmbeddingPipelineHooks,
+} from "./LocalEmbeddings.js";
 
 export { WorkerEmbeddings } from "./WorkerEmbeddings.js";
 export type { WorkerEmbeddingsOptions } from "./WorkerEmbeddings.js";
@@ -29,3 +33,5 @@ export type {
 	IndexedDBVectorStoreFilter,
 	IndexedDBVectorStoreArgs,
 } from "./IndexedDBVectorStore.js";
+
+export { setDebugLogging } from './debug.js';

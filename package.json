@@ -56,6 +56,7 @@
 		"@rollup/plugin-terser": "^0.4.4",
 		"@types/tape": "^5.8.1",
 		"c8": "^11.0.0",
+		"fake-indexeddb": "^6.2.5",
 		"husky": "^9.1.7",
 		"nyc": "^17.1.0",
 		"rollup": "^4.60.1",
@@ -76,8 +77,16 @@
 		"@langchain/core": "^1.1.39"
 	},
 	"nyc": {
-		"include": ["src"],
-		"exclude": ["src/**/*.test.*", "src/**/*.benchmark.*"],
-		"extension": [".ts", ".tsx"]
+		"include": [
+			"src"
+		],
+		"exclude": [
+			"src/**/*.test.*",
+			"src/**/*.benchmark.*"
+		],
+		"extension": [
+			".ts",
+			".tsx"
+		]
 	}
 }

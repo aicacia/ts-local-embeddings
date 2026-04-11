@@ -59,6 +59,10 @@ embeddings.terminate();
 - `allowRemoteModels`: when `false`, require local files only
 - `modelPath`: path passed to transformers as `cache_dir`; in browser apps this is typically a served model base path like `'/models/'` or `'/my-base/models/'`
 
+`WorkerEmbeddings` also supports:
+
+- `onProgress`: callback fired during `embedDocuments` batching with `processedAfterBatch` and `totalDocuments` values for UI progress indicators.
+
 To enable internal debug logs while diagnosing runtime/model loading issues, set:
 
 ```ts
@@ -78,6 +82,18 @@ const embeddings = new WorkerEmbeddings({
 	}
 });
 ```
+
+## Architecture
+
+The library now uses deep internal boundary modules while keeping the public API unchanged:
+
+- `embeddingPipeline`: owns token limit resolution, adaptive batching, tokenizer/model invocation compatibility, and embedding output validation.
+- `workerChannel`: owns worker request ids, pending promise lifecycle, timeout handling, and failure fan-out semantics.
+- `vectorWritePipeline`: owns write-path dedup policy, cache reuse, deterministic guard behavior, and record mapping.
+- `indexedDbStoreGateway`: owns IndexedDB lifecycle/open-upgrade flow, schema checks, and low-level read/write/query operations.
+- `runtimePolicy` + `runtimeLoader`: separates fallback-selection policy from the Hugging Face runtime adapter.
+
+Implementation notes and phased acceptance criteria live in [ARCHITECTURE_ACTION_PLAN.md](ARCHITECTURE_ACTION_PLAN.md).
 
 ## Local model files
 

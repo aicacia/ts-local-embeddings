@@ -4,21 +4,12 @@ import {
 	cosineSimilarity,
 	maximalMarginalRelevance,
 } from "@langchain/core/utils/math";
-
-type StoredVectorRecord = {
-	id: string;
-	content: string;
-	embeddingSpace?: string;
-	contentHash?: string;
-	cacheKey?: string;
-	embedding: number[];
-	metadata: Record<string, unknown>;
-};
-
-type PendingEmbeddingGroup = {
-	representativeDocument: Document;
-	indices: number[];
-};
+import {
+	createVectorWritePipeline,
+	type StoredVectorRecord,
+	type VectorWritePipeline,
+} from "./vectorWritePipeline.js";
+import { IndexedDbStoreGateway } from "./indexedDbStoreGateway.js";
 
 export type IndexedDBVectorStoreFilter = (doc: Document) => boolean;
 
@@ -30,31 +21,11 @@ export type IndexedDBVectorStoreArgs = {
 
 const DEFAULT_DB_NAME = "langchain-indexeddb-vectorstore";
 const DEFAULT_STORE_NAME = "vectors";
-const DB_VERSION = 2;
-const CONTENT_HASH_INDEX = "by_content_hash";
 
 function cosine(a: number[], b: number[]): number {
 	const similarityMatrix = cosineSimilarity([a], [b]);
 	const score = similarityMatrix[0]?.[0];
 	return Number.isFinite(score) ? score : 0;
-}
-
-function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
-	return new Promise<T>((resolve, reject) => {
-		request.onsuccess = () => resolve(request.result);
-		request.onerror = () =>
-			reject(request.error ?? new Error("IndexedDB request failed."));
-	});
-}
-
-function transactionDone(transaction: IDBTransaction): Promise<void> {
-	return new Promise<void>((resolve, reject) => {
-		transaction.oncomplete = () => resolve();
-		transaction.onerror = () =>
-			reject(transaction.error ?? new Error("IndexedDB transaction failed."));
-		transaction.onabort = () =>
-			reject(transaction.error ?? new Error("IndexedDB transaction aborted."));
-	});
 }
 
 function createDocument(record: StoredVectorRecord): Document {
@@ -65,80 +36,19 @@ function createDocument(record: StoredVectorRecord): Document {
 	});
 }
 
-function toStoredVectorRecord(args: {
-	id: string;
-	document: Document;
-	embeddingSpace: string;
-	contentHash: string;
-	embedding: number[];
-}): StoredVectorRecord {
-	const metadata =
-		(args.document.metadata as Record<string, unknown> | undefined) ?? {};
-
-	return {
-		id: args.id,
-		content: args.document.pageContent,
-		embeddingSpace: args.embeddingSpace,
-		contentHash: args.contentHash,
-		cacheKey: `${args.embeddingSpace}:${args.contentHash}`,
-		embedding: args.embedding,
-		metadata,
-	};
-}
-
-function fallbackHash(input: string): string {
-	let hash = 5381;
-	for (let index = 0; index < input.length; index += 1) {
-		hash = (hash * 33) ^ input.charCodeAt(index);
-	}
-
-	return `fallback-${(hash >>> 0).toString(16).padStart(8, "0")}`;
-}
-
-async function sha256(input: string): Promise<string> {
-	if (typeof crypto === "undefined" || !crypto.subtle) {
-		return fallbackHash(input);
-	}
-
-	const data = new TextEncoder().encode(input);
-	const digest = await crypto.subtle.digest("SHA-256", data);
-	return Array.from(new Uint8Array(digest), (byte) =>
-		byte.toString(16).padStart(2, "0"),
-	).join("");
-}
-
 type EmbeddingProvenanceSource = {
 	getEmbeddingProvenance?: () => Promise<string>;
 };
 
 const DEFAULT_EMBEDDING_SPACE = "default";
 
-function resolveRecordId(document: Document, fallbackIndex: number): string {
-	const metadataId = (document.metadata as { id?: unknown } | undefined)?.id;
-	if (typeof metadataId === "string" && metadataId.trim().length > 0) {
-		return metadataId;
-	}
-
-	if (typeof metadataId === "number" && Number.isFinite(metadataId)) {
-		return String(metadataId);
-	}
-
-	if (
-		typeof crypto !== "undefined" &&
-		typeof crypto.randomUUID === "function"
-	) {
-		return crypto.randomUUID();
-	}
-
-	return `doc-${Date.now()}-${fallbackIndex}`;
-}
-
 export class IndexedDBVectorStore {
 	readonly #embeddings: EmbeddingsInterface<number[]>;
 	readonly #dbName: string;
 	readonly #storeName: string;
 	readonly #similarity: (a: number[], b: number[]) => number;
-	#dbPromise: Promise<IDBDatabase> | null = null;
+	readonly #writePipeline: VectorWritePipeline;
+	readonly #gateway: IndexedDbStoreGateway;
 	#embeddingSpacePromise: Promise<string> | null = null;
 
 	constructor(
@@ -149,160 +59,29 @@ export class IndexedDBVectorStore {
 		this.#dbName = args.dbName ?? DEFAULT_DB_NAME;
 		this.#storeName = args.storeName ?? DEFAULT_STORE_NAME;
 		this.#similarity = args.similarity ?? cosine;
+		this.#gateway = new IndexedDbStoreGateway({
+			dbName: this.#dbName,
+			storeName: this.#storeName,
+		});
+		this.#writePipeline = createVectorWritePipeline({
+			embeddings: this.#embeddings,
+			resolveEmbeddingSpace: () => this.#resolveEmbeddingSpace(),
+			getCachedRecords: (embeddingSpace, contentHashes, contents) =>
+				this.#getRecordsByContentHash(embeddingSpace, contentHashes, contents),
+			putRecords: (records) => this.#putRecords(records),
+		});
 	}
 
 	async addDocuments(documents: Document[]): Promise<void> {
-		if (documents.length === 0) {
-			return;
-		}
-
-		const embeddingSpace = await this.#resolveEmbeddingSpace();
-
-		const resolvedIds = documents.map((document, index) =>
-			resolveRecordId(document, index),
-		);
-		const contentHashes = await Promise.all(
-			documents.map((document) => sha256(document.pageContent)),
-		);
-		const cachedRecords = await this.#getRecordsByContentHash(
-			embeddingSpace,
-			contentHashes,
-			documents.map((document) => document.pageContent),
-		);
-
-		const recordsToWrite: StoredVectorRecord[] = [];
-		const pendingEmbeddingGroups = new Map<string, PendingEmbeddingGroup>();
-
-		for (let index = 0; index < documents.length; index += 1) {
-			const document = documents[index];
-			const id = resolvedIds[index];
-			const contentHash = contentHashes[index];
-			const cachedRecord = cachedRecords[index];
-
-			if (cachedRecord) {
-				recordsToWrite.push(
-					toStoredVectorRecord({
-						id,
-						document,
-						embeddingSpace,
-						contentHash,
-						embedding: cachedRecord.embedding,
-					}),
-				);
-				continue;
-			}
-
-			const groupKey = `${contentHash}:${document.pageContent}`;
-			const existingGroup = pendingEmbeddingGroups.get(groupKey);
-			if (existingGroup) {
-				existingGroup.indices.push(index);
-				continue;
-			}
-
-			pendingEmbeddingGroups.set(groupKey, {
-				representativeDocument: document,
-				indices: [index],
-			});
-		}
-
-		const uniquePendingGroups = Array.from(pendingEmbeddingGroups.values());
-		if (uniquePendingGroups.length > 0) {
-			const embeddedVectors = await this.#embeddings.embedDocuments(
-				uniquePendingGroups.map(
-					(group) => group.representativeDocument.pageContent,
-				),
-			);
-
-			if (embeddedVectors.length !== uniquePendingGroups.length) {
-				throw new Error(
-					`Embedding runtime produced ${embeddedVectors.length} vectors for ${uniquePendingGroups.length} documents.`,
-				);
-			}
-
-			for (
-				let groupIndex = 0;
-				groupIndex < uniquePendingGroups.length;
-				groupIndex += 1
-			) {
-				const group = uniquePendingGroups[groupIndex];
-				const embedding = embeddedVectors[groupIndex] ?? [];
-
-				for (const originalIndex of group.indices) {
-					const document = documents[originalIndex];
-					recordsToWrite.push(
-						toStoredVectorRecord({
-							id: resolvedIds[originalIndex],
-							document,
-							embeddingSpace,
-							contentHash: contentHashes[originalIndex],
-							embedding,
-						}),
-					);
-				}
-			}
-		}
-
-		await this.#putRecords(recordsToWrite);
+		await this.#writePipeline.addDocuments(documents);
 	}
 
 	async addVectors(vectors: number[][], documents: Document[]): Promise<void> {
-		if (vectors.length !== documents.length) {
-			throw new Error(
-				`Expected vectors/documents lengths to match, got vectors=${vectors.length}, documents=${documents.length}.`,
-			);
-		}
-
-		if (vectors.length === 0) {
-			return;
-		}
-
-		const embeddingSpace = await this.#resolveEmbeddingSpace();
-
-		const resolvedIds = documents.map((document, index) =>
-			resolveRecordId(document, index),
-		);
-		const contentHashes = await Promise.all(
-			documents.map((document) => sha256(document.pageContent)),
-		);
-
-		const database = await this.#getDatabase();
-		const transaction = database.transaction(this.#storeName, "readwrite");
-		const store = transaction.objectStore(this.#storeName);
-
-		for (let index = 0; index < vectors.length; index += 1) {
-			const document = documents[index];
-			const embedding = vectors[index] ?? [];
-			const id = resolvedIds[index];
-			const contentHash = contentHashes[index];
-
-			const record = toStoredVectorRecord({
-				id,
-				document,
-				embeddingSpace,
-				contentHash,
-				embedding,
-			});
-
-			store.put(record);
-		}
-
-		await transactionDone(transaction);
+		await this.#writePipeline.addVectors(vectors, documents);
 	}
 
 	async #putRecords(records: StoredVectorRecord[]): Promise<void> {
-		if (records.length === 0) {
-			return;
-		}
-
-		const database = await this.#getDatabase();
-		const transaction = database.transaction(this.#storeName, "readwrite");
-		const store = transaction.objectStore(this.#storeName);
-
-		for (const record of records) {
-			store.put(record);
-		}
-
-		await transactionDone(transaction);
+		await this.#gateway.put(records);
 	}
 
 	async similaritySearch(
@@ -378,30 +157,15 @@ export class IndexedDBVectorStore {
 	}
 
 	async clear(): Promise<void> {
-		const database = await this.#getDatabase();
-		const transaction = database.transaction(this.#storeName, "readwrite");
-		transaction.objectStore(this.#storeName).clear();
-		await transactionDone(transaction);
+		await this.#gateway.clear();
 	}
 
 	async count(): Promise<number> {
-		const database = await this.#getDatabase();
-		const transaction = database.transaction(this.#storeName, "readonly");
-		const count = await requestToPromise(
-			transaction.objectStore(this.#storeName).count(),
-		);
-		await transactionDone(transaction);
-		return count;
+		return this.#gateway.count();
 	}
 
 	async close(): Promise<void> {
-		if (!this.#dbPromise) {
-			return;
-		}
-
-		const database = await this.#dbPromise;
-		database.close();
-		this.#dbPromise = null;
+		await this.#gateway.close();
 	}
 
 	static async fromTexts(
@@ -441,45 +205,8 @@ export class IndexedDBVectorStore {
 		args?: IndexedDBVectorStoreArgs,
 	): Promise<IndexedDBVectorStore> {
 		const store = new IndexedDBVectorStore(embeddings, args);
-		await store.#getDatabase();
+		await store.#gateway.open();
 		return store;
-	}
-
-	#getDatabase(): Promise<IDBDatabase> {
-		if (typeof indexedDB === "undefined") {
-			throw new Error("IndexedDB is not available in this environment.");
-		}
-
-		if (this.#dbPromise) {
-			return this.#dbPromise;
-		}
-
-		this.#dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-			const request = indexedDB.open(this.#dbName, DB_VERSION);
-
-			request.onupgradeneeded = () => {
-				const database = request.result;
-				const store = database.objectStoreNames.contains(this.#storeName)
-					? request.transaction?.objectStore(this.#storeName)
-					: database.createObjectStore(this.#storeName, { keyPath: "id" });
-
-				if (store && !store.indexNames.contains(CONTENT_HASH_INDEX)) {
-					store.createIndex(CONTENT_HASH_INDEX, "contentHash", {
-						unique: false,
-					});
-				}
-			};
-
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => {
-				this.#dbPromise = null;
-				reject(
-					request.error ?? new Error("Failed to open IndexedDB database."),
-				);
-			};
-		});
-
-		return this.#dbPromise;
 	}
 
 	async #getRecordsByContentHash(
@@ -487,78 +214,17 @@ export class IndexedDBVectorStore {
 		contentHashes: string[],
 		contents: string[],
 	): Promise<Array<StoredVectorRecord | null>> {
-		if (contentHashes.length === 0) {
-			return [];
-		}
-
-		const database = await this.#getDatabase();
-		const transaction = database.transaction(this.#storeName, "readonly");
-		const store = transaction.objectStore(this.#storeName);
-
-		let directMatches: Array<StoredVectorRecord | undefined> = Array.from(
-			{ length: contentHashes.length },
-			() => undefined,
+		return this.#gateway.queryByContentHash(
+			contentHashes,
+			contents,
+			(record, index) =>
+				(index < 0 || record.content === contents[index]) &&
+				this.#matchesEmbeddingSpace(record, embeddingSpace),
 		);
-		if (store.indexNames.contains(CONTENT_HASH_INDEX)) {
-			directMatches = await Promise.all(
-				contentHashes.map(async (contentHash, index) => {
-					const matches = await requestToPromise(
-						store.index(CONTENT_HASH_INDEX).getAll(contentHash),
-					);
-
-					return (
-						matches.find(
-							(match) =>
-								match.content === contents[index] &&
-								this.#matchesEmbeddingSpace(match, embeddingSpace),
-						) ?? undefined
-					);
-				}),
-			);
-			await transactionDone(transaction);
-			return directMatches.map((match) => match ?? null);
-		}
-
-		const allRecords = await requestToPromise(store.getAll());
-		const recordByHash = new Map<string, StoredVectorRecord>();
-		const recordByContent = new Map<string, StoredVectorRecord>();
-
-		for (const record of allRecords) {
-			if (!this.#matchesEmbeddingSpace(record, embeddingSpace)) {
-				continue;
-			}
-
-			if (record.contentHash) {
-				recordByHash.set(record.contentHash, record);
-			}
-			recordByContent.set(record.content, record);
-		}
-
-		const records = contentHashes.map((contentHash, index) => {
-			const directMatch = directMatches[index];
-			if (directMatch) {
-				return directMatch;
-			}
-
-			return (
-				recordByHash.get(contentHash) ??
-				recordByContent.get(contents[index]) ??
-				null
-			);
-		});
-
-		await transactionDone(transaction);
-		return records;
 	}
 
 	async #getAllRecords(): Promise<StoredVectorRecord[]> {
-		const database = await this.#getDatabase();
-		const transaction = database.transaction(this.#storeName, "readonly");
-		const records = await requestToPromise(
-			transaction.objectStore(this.#storeName).getAll(),
-		);
-		await transactionDone(transaction);
-		return records;
+		return this.#gateway.getAll();
 	}
 
 	async #queryVectors(

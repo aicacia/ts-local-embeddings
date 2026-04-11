@@ -1,25 +1,27 @@
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import type { LoadEmbeddingRuntimeOptions } from "./embeddingRuntime.js";
+import { isDebugLoggingEnabled } from "./debug.js";
 import type {
-	WorkerRequest,
 	WorkerRequestMap,
-	WorkerResponse,
+	WorkerResponseMap,
+	SerializedError,
+	WorkerSuccessResponse,
 } from "./embeddingWorkerProtocol.js";
+import { isSerializedError, isWorkerResponse } from "./embeddingWorkerProtocol.js";
+import { WorkerChannel } from "./workerChannel.js";
 
 export type WorkerEmbeddingsOptions = {
 	runtime?: LoadEmbeddingRuntimeOptions;
 	worker?: Worker;
+	requestTimeoutMs?: number;
+	onProgress?: (progress: WorkerResponseMap["progress"]) => void;
 };
-
-type PendingRequest = {
-	resolve: (value: unknown) => void;
-	reject: (reason?: unknown) => void;
-};
-
-type WorkerSuccessType = Exclude<WorkerResponse["type"], "error">;
 
 type WorkerResponsePayloadByType = {
-	[T in WorkerSuccessType]: Extract<WorkerResponse, { type: T }>["payload"];
+	[T in WorkerSuccessResponse["type"]]: Extract<
+		WorkerSuccessResponse,
+		{ type: T }
+	>["payload"];
 };
 
 type WorkerResultByRequestType = {
@@ -30,14 +32,22 @@ type WorkerResultByRequestType = {
 
 export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 	readonly #worker: Worker;
-	readonly #pendingRequests = new Map<number, PendingRequest>();
-	#requestId = 0;
+	readonly #channel: WorkerChannel;
 	#initialization: Promise<void> | null;
 	readonly #runtimeOptions: LoadEmbeddingRuntimeOptions | undefined;
+	readonly #onProgress: WorkerEmbeddingsOptions["onProgress"];
 	#terminated = false;
 
 	constructor(options: WorkerEmbeddingsOptions = {}) {
-		this.#runtimeOptions = options.runtime;
+		const debugLogging = isDebugLoggingEnabled();
+		this.#runtimeOptions = options.runtime
+			? {
+					...options.runtime,
+					debugLogging: options.runtime.debugLogging ?? debugLogging,
+				}
+			: debugLogging
+				? { debugLogging: true }
+				: undefined;
 
 		if (options.worker) {
 			this.#worker = options.worker;
@@ -54,8 +64,23 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 			);
 		}
 
-		this.#worker.onmessage = (event: MessageEvent<WorkerResponse>): void => {
-			this.#handleMessage(event.data);
+		this.#channel = new WorkerChannel(this.#worker, {
+			requestTimeoutMs: options.requestTimeoutMs,
+		});
+		this.#onProgress = options.onProgress;
+
+		this.#worker.onmessage = (event: MessageEvent<unknown>): void => {
+			if (!isWorkerResponse(event.data)) {
+				this.#handleWorkerFailure("Embedding worker sent an invalid response.");
+				return;
+			}
+
+			if (event.data.type === "progress") {
+				this.#onProgress?.(event.data.payload);
+				return;
+			}
+
+			this.#channel.handleResponse(event.data);
 		};
 
 		this.#worker.onerror = (event): void => {
@@ -77,7 +102,7 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 		}
 
 		this.#terminated = true;
-		this.#rejectAllPending(new Error("Embedding worker terminated."));
+		this.#channel.handleFailure("Embedding worker terminated.");
 		this.#worker.terminate();
 	}
 
@@ -135,60 +160,15 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 			return Promise.reject(new Error("Embedding worker already terminated."));
 		}
 
-		const requestId = ++this.#requestId;
-		const request = { type, requestId, payload } as WorkerRequest;
-
-		return new Promise<WorkerResultByRequestType[T]>((resolve, reject) => {
-			this.#pendingRequests.set(requestId, {
-				resolve: resolve as (value: unknown) => void,
-				reject,
-			});
-
-			try {
-				this.#worker.postMessage(request);
-			} catch (error) {
-				this.#pendingRequests.delete(requestId);
-				reject(error);
-			}
-		});
-	}
-
-	#handleMessage(response: WorkerResponse): void {
-		const pending = this.#pendingRequests.get(response.requestId);
-		if (!pending) {
-			return;
-		}
-
-		this.#pendingRequests.delete(response.requestId);
-
-		switch (response.type) {
-			case "ready":
-				pending.resolve(response.payload.runtime);
-				return;
-			case "documentsEmbedded":
-				pending.resolve(response.payload.embeddings);
-				return;
-			case "queryEmbedded":
-				pending.resolve(response.payload.embedding);
-				return;
-			case "error": {
-				const { message, name, stack } = response.payload;
-				const error = new Error(message);
-				error.name = name ?? error.name;
-				if (stack) {
-					error.stack = stack;
+		return this.#channel
+			.sendRequest(type, payload)
+			.then((response) => this.#mapResponseToResult(type, response))
+			.catch((error) => {
+				if (isSerializedError(error)) {
+					throw this.#deserializeError(error);
 				}
-				pending.reject(error);
-				return;
-			}
-		}
-	}
-
-	#rejectAllPending(error: Error): void {
-		for (const pending of this.#pendingRequests.values()) {
-			pending.reject(error);
-		}
-		this.#pendingRequests.clear();
+				throw error;
+			});
 	}
 
 	#handleWorkerFailure(message: string): void {
@@ -197,7 +177,51 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 		}
 
 		this.#terminated = true;
-		this.#rejectAllPending(new Error(message));
+		this.#channel.handleFailure(message);
 		this.#worker.terminate();
+	}
+
+	#mapResponseToResult<T extends keyof WorkerRequestMap>(
+		type: T,
+		response: WorkerSuccessResponse,
+	): WorkerResultByRequestType[T] {
+		switch (type) {
+			case "init":
+				if (response.type !== "ready") {
+					throw new Error(
+						`Embedding worker returned ${response.type} for init request.`,
+					);
+				}
+				return response.payload.runtime as WorkerResultByRequestType[T];
+			case "embedDocuments":
+				if (response.type !== "documentsEmbedded") {
+					throw new Error(
+						`Embedding worker returned ${response.type} for embedDocuments request.`,
+					);
+				}
+				return response.payload.embeddings as WorkerResultByRequestType[T];
+			case "embedQuery":
+				if (response.type !== "queryEmbedded") {
+					throw new Error(
+						`Embedding worker returned ${response.type} for embedQuery request.`,
+					);
+				}
+				return response.payload.embedding as WorkerResultByRequestType[T];
+		}
+	}
+
+	#deserializeError(payload: SerializedError): Error {
+		const error = new Error(payload.message);
+		error.name = payload.name ?? error.name;
+		if (payload.stack) {
+			error.stack = payload.stack;
+		}
+		if (payload.code) {
+			(error as Error & { code?: string }).code = payload.code;
+		}
+		if (payload.cause && payload.cause.length > 0) {
+			(error as Error & { cause?: unknown }).cause = payload.cause;
+		}
+		return error;
 	}
 }
