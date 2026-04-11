@@ -96,5 +96,5 @@ pnpm install
 pnpm build
 pnpm lint
 pnpm coverage
-pnpm example:dev
+pnpm github-pages:dev
 ```

@@ -6,8 +6,8 @@
 			"browser/**/*",
 			"esm/**/*",
 			"types/**/*",
-			"example/.svelte-kit/**/*",
-			"example/build/**/*"
+			"github-pages/.svelte-kit/**/*",
+			"github-pages/build/**/*"
 		]
 	}
 }

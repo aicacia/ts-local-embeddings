@@ -137,9 +137,15 @@ async function runSearch() {
 <div class="mx-auto flex h-full min-h-0 max-w-5xl flex-1 flex-col px-4 py-8">
 	<h1 class="text-3xl font-bold tracking-tight text-slate-900">Local Embeddings Search</h1>
 	<p class="mt-1 text-slate-600">
-		{documents.length} documents indexed in memory
-		{#if indexDurationMs !== null}
-			in {formatDuration(indexDurationMs)}
+		{#if modelLoading}
+			Preparing {documents.length} documents for indexing
+		{:else if indexing}
+			Indexing {documents.length} documents in memory
+		{:else}
+			{documents.length} documents indexed in memory
+			{#if indexDurationMs !== null}
+				in {formatDuration(indexDurationMs)}
+			{/if}
 		{/if}
 	</p>
 
