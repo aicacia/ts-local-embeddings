@@ -25,8 +25,8 @@ let filteredDocuments = $state<
 let lastSearchDurationMs = $state<number | null>(null);
 let indexDurationMs = $state<number | null>(null);
 let indexedDocumentCount = $state(0);
-let indexedDocumentTotal = $state(0);
-let indexProgressPercent = $state<number | null>(null);
+let indexedDocumentTotal = $state(documents.length);
+let indexProgressPercent = $state(0);
 
 const modelPath = `${base === "/" ? "" : base}/models/`;
 
@@ -80,12 +80,17 @@ onMount(() => {
 						return;
 					}
 
+					const totalDocuments =
+						progress.event.totalDocuments > 0
+							? progress.event.totalDocuments
+							: documents.length;
+
 					indexedDocumentCount = progress.event.processedAfterBatch;
-					indexedDocumentTotal = progress.event.totalDocuments;
-					if (progress.event.totalDocuments > 0) {
+					indexedDocumentTotal = totalDocuments;
+					if (totalDocuments > 0) {
 						indexProgressPercent =
 							(progress.event.processedAfterBatch /
-								progress.event.totalDocuments) *
+								totalDocuments) *
 							100;
 					} else {
 						indexProgressPercent = null;
@@ -104,7 +109,7 @@ onMount(() => {
 			indexing = true;
 			indexedDocumentCount = 0;
 			indexedDocumentTotal = documents.length;
-			indexProgressPercent = null;
+			indexProgressPercent = 0;
 			const indexingStartedAt = getNowMs();
 			await vectorStore.addDocuments(documents);
 			indexDurationMs = getNowMs() - indexingStartedAt;
@@ -173,9 +178,7 @@ async function runSearch() {
 			Preparing {documents.length} documents for indexing
 		{:else if indexing}
 			Indexing {documents.length} documents in memory
-			{#if indexProgressPercent !== null && indexedDocumentTotal > 0}
-				({indexedDocumentCount}/{indexedDocumentTotal}, {indexProgressPercent.toFixed(1)}%)
-			{/if}
+			({indexedDocumentCount}/{indexedDocumentTotal}, {indexProgressPercent.toFixed(1)}%)
 		{:else}
 			{documents.length} documents indexed in memory
 			{#if indexDurationMs !== null}
@@ -220,11 +223,9 @@ async function runSearch() {
 	{:else if indexing}
 		<p class="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-800">
 			Indexing documents. This can take a bit on first load.
-			{#if indexProgressPercent !== null && indexedDocumentTotal > 0}
-				<span class="mt-1 block text-sky-900">
-					Indexed {indexedDocumentCount} of {indexedDocumentTotal} ({indexProgressPercent.toFixed(1)}%)
-				</span>
-			{/if}
+			<span class="mt-1 block text-sky-900">
+				Indexed {indexedDocumentCount} of {indexedDocumentTotal} ({indexProgressPercent.toFixed(1)}%)
+			</span>
 		</p>
 	{:else if error}
 		<p class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-700">{error}</p>
