@@ -60,6 +60,46 @@
 		return `${totalHours}h ${remainingMinutes}m ${remainingSeconds.toFixed(0)}s`;
 	}
 
+	async function indexDocuments(options: { clearFirst?: boolean } = {}): Promise<void> {
+		if (!vectorStore) {
+			error = 'Vector store is not ready yet.';
+			return;
+		}
+
+		indexing = true;
+		searching = false;
+		error = '';
+		lastSearchDurationMs = null;
+		matches = [];
+		filteredDocuments = documents.map((document) => ({
+			document,
+			score: null
+		}));
+		indexedDocumentCount = 0;
+		indexedDocumentTotal = documents.length;
+		indexProgressPercent = 0;
+
+		const indexingStartedAt = getNowMs();
+		try {
+			if (options.clearFirst) {
+				await vectorStore.clear();
+			}
+			await vectorStore.addDocuments(documents);
+			indexDurationMs = getNowMs() - indexingStartedAt;
+			indexedDocumentCount = documents.length;
+			indexedDocumentTotal = documents.length;
+			indexProgressPercent = 100;
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to index documents.';
+		} finally {
+			indexing = false;
+		}
+	}
+
+	async function clearCacheAndReindex() {
+		await indexDocuments({ clearFirst: true });
+	}
+
 	onMount(() => {
 		let disposed = false;
 
@@ -82,7 +122,7 @@
 						if (totalDocuments > 0) {
 							indexProgressPercent = (progress.event.processedAfterBatch / totalDocuments) * 100;
 						} else {
-							indexProgressPercent = null;
+							indexProgressPercent = 0;
 						}
 					}
 				});
@@ -95,16 +135,7 @@
 				vectorStore = new IndexedDBVectorStore(workerEmbeddings);
 
 				modelLoading = false;
-				indexing = true;
-				indexedDocumentCount = 0;
-				indexedDocumentTotal = documents.length;
-				indexProgressPercent = 0;
-				const indexingStartedAt = getNowMs();
-				await vectorStore.addDocuments(documents);
-				indexDurationMs = getNowMs() - indexingStartedAt;
-				indexedDocumentCount = documents.length;
-				indexedDocumentTotal = documents.length;
-				indexProgressPercent = 100;
+				await indexDocuments();
 			} catch (err) {
 				error = err instanceof Error ? err.message : 'Failed to initialize local embeddings.';
 			} finally {
@@ -173,7 +204,7 @@
 		{/if}
 	</p>
 
-	<div class="mt-5 grid items-end gap-3 md:grid-cols-[1fr_auto_auto]">
+	<div class="mt-5 grid items-end gap-3 md:grid-cols-[1fr_auto_auto_auto]">
 		<input
 			type="text"
 			class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 transition outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 disabled:cursor-not-allowed disabled:bg-slate-100"
@@ -199,6 +230,13 @@
 			class="rounded-lg bg-orange-600 px-4 py-2 font-medium text-white transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:bg-slate-400"
 		>
 			Search
+		</button>
+		<button
+			onclick={clearCacheAndReindex}
+			disabled={modelLoading || indexing || searching}
+			class="rounded-lg border border-slate-300 bg-white px-4 py-2 font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+		>
+			Clear Cache + Reindex
 		</button>
 	</div>
 
