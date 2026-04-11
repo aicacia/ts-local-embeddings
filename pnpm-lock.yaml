@@ -67,7 +67,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  example:
+  github-pages:
     dependencies:
       '@aicacia/local-embeddings':
         specifier: workspace:*
