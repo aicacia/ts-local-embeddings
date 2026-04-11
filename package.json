@@ -32,6 +32,9 @@
 		"clean": "rm -rf esm browser types .nyc_output coverage",
 		"lint": "biome lint ./src",
 		"format": "biome format --write .",
+		"format:check": "biome format .",
+		"ci:lint": "pnpm -r lint",
+		"ci:format": "pnpm -r format:check",
 		"github-pages:dev": "pnpm --filter @aicacia/local-embeddings-github-pages dev",
 		"preCommit": "npm run format && npm run lint && npm run coverage",
 		"prepare": "husky"
