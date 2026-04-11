@@ -34,9 +34,10 @@
 		"format": "biome format --write .",
 		"format:check": "biome format .",
 		"ci:lint": "pnpm -r lint",
-		"ci:format": "pnpm -r format:check",
+		"ci:format": "pnpm -r format",
+		"ci:format:check": "pnpm -r format:check",
 		"github-pages:dev": "pnpm --filter @aicacia/local-embeddings-github-pages dev",
-		"preCommit": "npm run format && npm run lint && npm run coverage",
+		"preCommit": "npm run ci:format && npm run ci:lint && npm run coverage",
 		"prepare": "husky"
 	},
 	"keywords": [

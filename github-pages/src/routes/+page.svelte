@@ -1,172 +1,160 @@
 <script lang="ts">
-import { base } from "$app/paths";
-import {
-	WorkerEmbeddings,
-	IndexedDBVectorStore,
-} from "@aicacia/local-embeddings";
-import { documents } from "./_documents";
-import { onMount } from "svelte";
-import type { Document } from "@langchain/core/documents";
-import type { WorkerResponseMap } from "@aicacia/local-embeddings";
+	import { base } from '$app/paths';
+	import { WorkerEmbeddings, IndexedDBVectorStore } from '@aicacia/local-embeddings';
+	import { documents } from './_documents';
+	import { onMount } from 'svelte';
+	import type { Document } from '@langchain/core/documents';
+	import type { WorkerResponseMap } from '@aicacia/local-embeddings';
 
-let vectorStore: IndexedDBVectorStore | null = null;
-let workerEmbeddings: WorkerEmbeddings | null = null;
+	let vectorStore: IndexedDBVectorStore | null = null;
+	let workerEmbeddings: WorkerEmbeddings | null = null;
 
-let query = $state("");
-let topK = $state(5);
-let modelLoading = $state(true);
-let indexing = $state(false);
-let searching = $state(false);
-let error = $state("");
-let matches = $state<Array<{ document: Document; score: number }>>([]);
-let filteredDocuments = $state<
-	Array<{ document: Document; score: number | null }>
->(documents.map((document) => ({ document, score: null })));
-let lastSearchDurationMs = $state<number | null>(null);
-let indexDurationMs = $state<number | null>(null);
-let indexedDocumentCount = $state(0);
-let indexedDocumentTotal = $state(documents.length);
-let indexProgressPercent = $state(0);
+	let query = $state('');
+	let topK = $state(5);
+	let modelLoading = $state(true);
+	let indexing = $state(false);
+	let searching = $state(false);
+	let error = $state('');
+	let matches = $state<Array<{ document: Document; score: number }>>([]);
+	let filteredDocuments = $state<Array<{ document: Document; score: number | null }>>(
+		documents.map((document) => ({ document, score: null }))
+	);
+	let lastSearchDurationMs = $state<number | null>(null);
+	let indexDurationMs = $state<number | null>(null);
+	let indexedDocumentCount = $state(0);
+	let indexedDocumentTotal = $state(documents.length);
+	let indexProgressPercent = $state(0);
 
-const modelPath = `${base === "/" ? "" : base}/models/`;
+	const modelPath = `${base === '/' ? '' : base}/models/`;
 
-function getNowMs(): number {
-	if (
-		typeof performance !== "undefined" &&
-		typeof performance.now === "function"
-	) {
-		return performance.now();
-	}
-
-	return Date.now();
-}
-
-function formatDuration(durationMs: number): string {
-	if (!Number.isFinite(durationMs) || durationMs < 0) {
-		return "0ms";
-	}
-
-	if (durationMs < 1000) {
-		return `${durationMs.toFixed(2)}ms`;
-	}
-
-	const totalSeconds = durationMs / 1000;
-	if (totalSeconds < 60) {
-		return `${totalSeconds.toFixed(2)}s`;
-	}
-
-	const totalMinutes = Math.floor(totalSeconds / 60);
-	const remainingSeconds = totalSeconds % 60;
-	if (totalMinutes < 60) {
-		return `${totalMinutes}m ${remainingSeconds.toFixed(1)}s`;
-	}
-
-	const totalHours = Math.floor(totalMinutes / 60);
-	const remainingMinutes = totalMinutes % 60;
-	return `${totalHours}h ${remainingMinutes}m ${remainingSeconds.toFixed(0)}s`;
-}
-
-onMount(() => {
-	let disposed = false;
-
-	void (async () => {
-		try {
-			workerEmbeddings = new WorkerEmbeddings({
-				runtime: {
-					modelPath,
-				},
-				onProgress: (progress: WorkerResponseMap["progress"]) => {
-					if (progress.requestType !== "embedDocuments") {
-						return;
-					}
-
-					const totalDocuments =
-						progress.event.totalDocuments > 0
-							? progress.event.totalDocuments
-							: documents.length;
-
-					indexedDocumentCount = progress.event.processedAfterBatch;
-					indexedDocumentTotal = totalDocuments;
-					if (totalDocuments > 0) {
-						indexProgressPercent =
-							(progress.event.processedAfterBatch / totalDocuments) * 100;
-					} else {
-						indexProgressPercent = null;
-					}
-				},
-			});
-
-			if (disposed) {
-				workerEmbeddings.terminate();
-				return;
-			}
-
-			vectorStore = new IndexedDBVectorStore(workerEmbeddings);
-
-			modelLoading = false;
-			indexing = true;
-			indexedDocumentCount = 0;
-			indexedDocumentTotal = documents.length;
-			indexProgressPercent = 0;
-			const indexingStartedAt = getNowMs();
-			await vectorStore.addDocuments(documents);
-			indexDurationMs = getNowMs() - indexingStartedAt;
-			indexedDocumentCount = documents.length;
-			indexedDocumentTotal = documents.length;
-			indexProgressPercent = 100;
-		} catch (err) {
-			error =
-				err instanceof Error
-					? err.message
-					: "Failed to initialize local embeddings.";
-		} finally {
-			modelLoading = false;
-			indexing = false;
+	function getNowMs(): number {
+		if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+			return performance.now();
 		}
-	})();
 
-	return () => {
-		disposed = true;
-		vectorStore = null;
-		workerEmbeddings?.terminate();
-		workerEmbeddings = null;
-	};
-});
-
-async function runSearch() {
-	if (!vectorStore) {
-		error = "Vector store is not ready yet.";
-		return;
+		return Date.now();
 	}
 
-	if (!query.trim()) {
-		matches = [];
-		filteredDocuments = documents.map((document) => ({
-			document,
-			score: null,
-		}));
+	function formatDuration(durationMs: number): string {
+		if (!Number.isFinite(durationMs) || durationMs < 0) {
+			return '0ms';
+		}
+
+		if (durationMs < 1000) {
+			return `${durationMs.toFixed(2)}ms`;
+		}
+
+		const totalSeconds = durationMs / 1000;
+		if (totalSeconds < 60) {
+			return `${totalSeconds.toFixed(2)}s`;
+		}
+
+		const totalMinutes = Math.floor(totalSeconds / 60);
+		const remainingSeconds = totalSeconds % 60;
+		if (totalMinutes < 60) {
+			return `${totalMinutes}m ${remainingSeconds.toFixed(1)}s`;
+		}
+
+		const totalHours = Math.floor(totalMinutes / 60);
+		const remainingMinutes = totalMinutes % 60;
+		return `${totalHours}h ${remainingMinutes}m ${remainingSeconds.toFixed(0)}s`;
+	}
+
+	onMount(() => {
+		let disposed = false;
+
+		void (async () => {
+			try {
+				workerEmbeddings = new WorkerEmbeddings({
+					runtime: {
+						modelPath
+					},
+					onProgress: (progress: WorkerResponseMap['progress']) => {
+						if (progress.requestType !== 'embedDocuments') {
+							return;
+						}
+
+						const totalDocuments =
+							progress.event.totalDocuments > 0 ? progress.event.totalDocuments : documents.length;
+
+						indexedDocumentCount = progress.event.processedAfterBatch;
+						indexedDocumentTotal = totalDocuments;
+						if (totalDocuments > 0) {
+							indexProgressPercent = (progress.event.processedAfterBatch / totalDocuments) * 100;
+						} else {
+							indexProgressPercent = null;
+						}
+					}
+				});
+
+				if (disposed) {
+					workerEmbeddings.terminate();
+					return;
+				}
+
+				vectorStore = new IndexedDBVectorStore(workerEmbeddings);
+
+				modelLoading = false;
+				indexing = true;
+				indexedDocumentCount = 0;
+				indexedDocumentTotal = documents.length;
+				indexProgressPercent = 0;
+				const indexingStartedAt = getNowMs();
+				await vectorStore.addDocuments(documents);
+				indexDurationMs = getNowMs() - indexingStartedAt;
+				indexedDocumentCount = documents.length;
+				indexedDocumentTotal = documents.length;
+				indexProgressPercent = 100;
+			} catch (err) {
+				error = err instanceof Error ? err.message : 'Failed to initialize local embeddings.';
+			} finally {
+				modelLoading = false;
+				indexing = false;
+			}
+		})();
+
+		return () => {
+			disposed = true;
+			vectorStore = null;
+			workerEmbeddings?.terminate();
+			workerEmbeddings = null;
+		};
+	});
+
+	async function runSearch() {
+		if (!vectorStore) {
+			error = 'Vector store is not ready yet.';
+			return;
+		}
+
+		if (!query.trim()) {
+			matches = [];
+			filteredDocuments = documents.map((document) => ({
+				document,
+				score: null
+			}));
+			lastSearchDurationMs = null;
+			return;
+		}
+
+		topK = Math.min(20, Math.max(1, Math.round(topK || 1)));
+
+		searching = true;
+		error = '';
 		lastSearchDurationMs = null;
-		return;
+
+		const startedAt = getNowMs();
+		try {
+			const results = await vectorStore.similaritySearchWithScore(query, topK);
+			matches = results.map(([document, score]) => ({ document, score }));
+			filteredDocuments = matches;
+			lastSearchDurationMs = getNowMs() - startedAt;
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Search failed.';
+		} finally {
+			searching = false;
+		}
 	}
-
-	topK = Math.min(20, Math.max(1, Math.round(topK || 1)));
-
-	searching = true;
-	error = "";
-	lastSearchDurationMs = null;
-
-	const startedAt = getNowMs();
-	try {
-		const results = await vectorStore.similaritySearchWithScore(query, topK);
-		matches = results.map(([document, score]) => ({ document, score }));
-		filteredDocuments = matches;
-		lastSearchDurationMs = getNowMs() - startedAt;
-	} catch (err) {
-		error = err instanceof Error ? err.message : "Search failed.";
-	} finally {
-		searching = false;
-	}
-}
 </script>
 
 <div class="mx-auto flex h-full min-h-0 max-w-5xl flex-1 flex-col px-4 py-8">
@@ -175,8 +163,8 @@ async function runSearch() {
 		{#if modelLoading}
 			Preparing {documents.length} documents for indexing
 		{:else if indexing}
-			Indexing {documents.length} documents in memory
-			({indexedDocumentCount}/{indexedDocumentTotal}, {indexProgressPercent.toFixed(1)}%)
+			Indexing {documents.length} documents in memory ({indexedDocumentCount}/{indexedDocumentTotal},
+			{indexProgressPercent.toFixed(1)}%)
 		{:else}
 			{documents.length} documents indexed in memory
 			{#if indexDurationMs !== null}
@@ -222,7 +210,9 @@ async function runSearch() {
 		<p class="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-800">
 			Indexing documents. This can take a bit on first load.
 			<span class="mt-1 block text-sky-900">
-				Indexed {indexedDocumentCount} of {indexedDocumentTotal} ({indexProgressPercent.toFixed(1)}%)
+				Indexed {indexedDocumentCount} of {indexedDocumentTotal} ({indexProgressPercent.toFixed(
+					1
+				)}%)
 			</span>
 		</p>
 	{:else if error}
