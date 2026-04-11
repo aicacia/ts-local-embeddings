@@ -32,19 +32,24 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 	readonly #worker: Worker;
 	readonly #pendingRequests = new Map<number, PendingRequest>();
 	#requestId = 0;
-	#initialization: Promise<void>;
+	#initialization: Promise<void> | null;
+	readonly #runtimeOptions: LoadEmbeddingRuntimeOptions | undefined;
 	#terminated = false;
 
 	constructor(options: WorkerEmbeddingsOptions = {}) {
-		if (typeof Worker === "undefined") {
-			throw new Error("Web Workers are not available in this environment.");
-		}
+		this.#runtimeOptions = options.runtime;
 
-		this.#worker =
-			options.worker ??
-			new Worker(new URL("./embedding.worker.js", import.meta.url), {
+		if (options.worker) {
+			this.#worker = options.worker;
+		} else {
+			if (typeof Worker === "undefined") {
+				throw new Error("Web Workers are not available in this environment.");
+			}
+
+			this.#worker = new Worker(new URL("./embedding.worker.js", import.meta.url), {
 				type: "module",
 			});
+		}
 
 		this.#worker.onmessage = (event: MessageEvent<WorkerResponse>): void => {
 			this.#handleMessage(event.data);
@@ -60,9 +65,7 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 			);
 		};
 
-		this.#initialization = this.#request("init", {
-			options: options.runtime,
-		}).then(() => undefined);
+		this.#initialization = this.#startInitialization();
 	}
 
 	terminate(): void {
@@ -76,15 +79,49 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 	}
 
 	async embedDocuments(documents: string[]): Promise<number[][]> {
-		await this.#initialization;
+		await this.#ensureInitialized();
 		const embeddings = await this.#request("embedDocuments", { documents });
 		return embeddings;
 	}
 
 	async embedQuery(document: string): Promise<number[]> {
-		await this.#initialization;
+		await this.#ensureInitialized();
 		const embedding = await this.#request("embedQuery", { document });
 		return embedding;
+	}
+
+	async getEmbeddingProvenance(): Promise<string> {
+		await this.#ensureInitialized();
+		const runtime = await this.#request("init", {
+			options: this.#runtimeOptions,
+		});
+		return `${runtime.modelId}:${runtime.variant}`;
+	}
+
+	#startInitialization(): Promise<void> {
+		return this.#request("init", {
+			options: this.#runtimeOptions,
+		}).then(() => undefined);
+	}
+
+	async #ensureInitialized(): Promise<void> {
+		if (this.#terminated) {
+			throw new Error("Embedding worker already terminated.");
+		}
+
+		if (this.#initialization === null) {
+			this.#initialization = this.#startInitialization();
+		}
+
+		const currentInitialization = this.#initialization;
+		try {
+			await currentInitialization;
+		} catch (error) {
+			if (this.#initialization === currentInitialization) {
+				this.#initialization = null;
+			}
+			throw error;
+		}
 	}
 
 	#request<T extends keyof WorkerRequestMap>(

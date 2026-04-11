@@ -67,3 +67,63 @@ test("LocalEmbeddings embeds a single query", async (assert) => {
 	assert.deepEqual(result, [5, 16], "returns exactly one vector for query");
 	assert.end();
 });
+
+test("LocalEmbeddings rejects malformed numeric vectors", async (assert) => {
+	const runtime = createRuntime();
+	const malformedModel = Object.assign(
+		async (inputs: {
+			documents: string[];
+			options: { max_length: number };
+		}): Promise<{ sentence_embedding: { tolist: () => unknown } }> => ({
+			sentence_embedding: {
+				tolist: () =>
+					inputs.documents.map(() => [1, Number.NaN] as unknown as number[]),
+			},
+		}),
+		{ config: { max_position_embeddings: 16 } },
+	) as TestModel;
+
+	const embeddings = new LocalEmbeddings({
+		tokenizer: runtime.tokenizer,
+		model: malformedModel,
+	});
+
+	try {
+		await embeddings.embedDocuments(["one"]);
+		assert.fail("expected embedDocuments to throw for malformed vectors");
+	} catch (error) {
+		assert.ok(
+			error instanceof Error && /non-numeric embedding vector/i.test(error.message),
+			"throws when any embedding contains non-finite numeric values",
+		);
+	}
+	assert.end();
+});
+
+test("LocalEmbeddings rejects wrong query embedding count", async (assert) => {
+	const runtime = createRuntime();
+	const wrongCountModel = Object.assign(
+		async (): Promise<{ sentence_embedding: { tolist: () => number[][] } }> => ({
+			sentence_embedding: {
+				tolist: () => [[1, 2], [3, 4]],
+			},
+		}),
+		{ config: { max_position_embeddings: 16 } },
+	) as TestModel;
+
+	const embeddings = new LocalEmbeddings({
+		tokenizer: runtime.tokenizer,
+		model: wrongCountModel,
+	});
+
+	try {
+		await embeddings.embedQuery("query");
+		assert.fail("expected embedQuery to throw for invalid output length");
+	} catch (error) {
+		assert.ok(
+			error instanceof Error && /produced 2 vectors for 1 documents/i.test(error.message),
+			"throws when query embedding response length is not exactly one",
+		);
+	}
+	assert.end();
+});

@@ -8,7 +8,9 @@ import {
 type StoredVectorRecord = {
 	id: string;
 	content: string;
+	embeddingSpace?: string;
 	contentHash?: string;
+	cacheKey?: string;
 	embedding: number[];
 	metadata: Record<string, unknown>;
 };
@@ -66,6 +68,7 @@ function createDocument(record: StoredVectorRecord): Document {
 function toStoredVectorRecord(args: {
 	id: string;
 	document: Document;
+	embeddingSpace: string;
 	contentHash: string;
 	embedding: number[];
 }): StoredVectorRecord {
@@ -75,7 +78,9 @@ function toStoredVectorRecord(args: {
 	return {
 		id: args.id,
 		content: args.document.pageContent,
+		embeddingSpace: args.embeddingSpace,
 		contentHash: args.contentHash,
+		cacheKey: `${args.embeddingSpace}:${args.contentHash}`,
 		embedding: args.embedding,
 		metadata,
 	};
@@ -101,6 +106,12 @@ async function sha256(input: string): Promise<string> {
 		byte.toString(16).padStart(2, "0"),
 	).join("");
 }
+
+type EmbeddingProvenanceSource = {
+	getEmbeddingProvenance?: () => Promise<string>;
+};
+
+const DEFAULT_EMBEDDING_SPACE = "default";
 
 function resolveRecordId(document: Document, fallbackIndex: number): string {
 	const metadataId = (document.metadata as { id?: unknown } | undefined)?.id;
@@ -128,6 +139,7 @@ export class IndexedDBVectorStore {
 	readonly #storeName: string;
 	readonly #similarity: (a: number[], b: number[]) => number;
 	#dbPromise: Promise<IDBDatabase> | null = null;
+	#embeddingSpacePromise: Promise<string> | null = null;
 
 	constructor(
 		embeddings: EmbeddingsInterface<number[]>,
@@ -144,6 +156,8 @@ export class IndexedDBVectorStore {
 			return;
 		}
 
+		const embeddingSpace = await this.#resolveEmbeddingSpace();
+
 		const resolvedIds = documents.map((document, index) =>
 			resolveRecordId(document, index),
 		);
@@ -151,6 +165,7 @@ export class IndexedDBVectorStore {
 			documents.map((document) => sha256(document.pageContent)),
 		);
 		const cachedRecords = await this.#getRecordsByContentHash(
+			embeddingSpace,
 			contentHashes,
 			documents.map((document) => document.pageContent),
 		);
@@ -169,6 +184,7 @@ export class IndexedDBVectorStore {
 					toStoredVectorRecord({
 						id,
 						document,
+						embeddingSpace,
 						contentHash,
 						embedding: cachedRecord.embedding,
 					}),
@@ -217,6 +233,7 @@ export class IndexedDBVectorStore {
 						toStoredVectorRecord({
 							id: resolvedIds[originalIndex],
 							document,
+								embeddingSpace,
 							contentHash: contentHashes[originalIndex],
 							embedding,
 						}),
@@ -239,6 +256,8 @@ export class IndexedDBVectorStore {
 			return;
 		}
 
+		const embeddingSpace = await this.#resolveEmbeddingSpace();
+
 		const resolvedIds = documents.map((document, index) =>
 			resolveRecordId(document, index),
 		);
@@ -259,6 +278,7 @@ export class IndexedDBVectorStore {
 			const record = toStoredVectorRecord({
 				id,
 				document,
+				embeddingSpace,
 				contentHash,
 				embedding,
 			});
@@ -463,6 +483,7 @@ export class IndexedDBVectorStore {
 	}
 
 	async #getRecordsByContentHash(
+		embeddingSpace: string,
 		contentHashes: string[],
 		contents: string[],
 	): Promise<Array<StoredVectorRecord | null>> {
@@ -480,9 +501,19 @@ export class IndexedDBVectorStore {
 		);
 		if (store.indexNames.contains(CONTENT_HASH_INDEX)) {
 			directMatches = await Promise.all(
-				contentHashes.map((contentHash) =>
-					requestToPromise(store.index(CONTENT_HASH_INDEX).get(contentHash)),
-				),
+				contentHashes.map(async (contentHash, index) => {
+					const matches = await requestToPromise(
+						store.index(CONTENT_HASH_INDEX).getAll(contentHash),
+					);
+
+					return (
+						matches.find(
+							(match) =>
+								match.content === contents[index] &&
+								this.#matchesEmbeddingSpace(match, embeddingSpace),
+						) ?? undefined
+					);
+				}),
 			);
 			await transactionDone(transaction);
 			return directMatches.map((match) => match ?? null);
@@ -493,6 +524,10 @@ export class IndexedDBVectorStore {
 		const recordByContent = new Map<string, StoredVectorRecord>();
 
 		for (const record of allRecords) {
+			if (!this.#matchesEmbeddingSpace(record, embeddingSpace)) {
+				continue;
+			}
+
 			if (record.contentHash) {
 				recordByHash.set(record.contentHash, record);
 			}
@@ -563,5 +598,33 @@ export class IndexedDBVectorStore {
 			}))
 			.sort((left, right) => right.similarity - left.similarity)
 			.slice(0, Math.max(0, k));
+	}
+
+	#matchesEmbeddingSpace(
+		record: StoredVectorRecord,
+		embeddingSpace: string,
+	): boolean {
+		const recordSpace = record.embeddingSpace ?? DEFAULT_EMBEDDING_SPACE;
+		return recordSpace === embeddingSpace;
+	}
+
+	#resolveEmbeddingSpace(): Promise<string> {
+		if (this.#embeddingSpacePromise) {
+			return this.#embeddingSpacePromise;
+		}
+
+		this.#embeddingSpacePromise = (async () => {
+			const source = this.#embeddings as EmbeddingProvenanceSource;
+			if (typeof source.getEmbeddingProvenance === "function") {
+				const provenance = await source.getEmbeddingProvenance();
+				if (typeof provenance === "string" && provenance.length > 0) {
+					return provenance;
+				}
+			}
+
+			return DEFAULT_EMBEDDING_SPACE;
+		})();
+
+		return this.#embeddingSpacePromise;
 	}
 }

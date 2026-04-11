@@ -1,7 +1,7 @@
 # ts-local-embeddings
 
 [![license](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE-MIT)
-[![docs](https://img.shields.io/badge/docs-typescript-blue.svg)](https://aicacia.github.io/ts-local-embeddings/)
+[![docs](https://img.shields.io/badge/docs-typescript-blue.svg)](https://aicacia.github.io/ts-local-embeddings/docs/)
 [![npm (scoped)](https://img.shields.io/npm/v/@aicacia/local-embeddings)](https://www.npmjs.com/package/@aicacia/local-embeddings)
 [![build](https://github.com/aicacia/ts-local-embeddings/workflows/Test/badge.svg)](https://github.com/aicacia/ts-local-embeddings/actions?query=workflow%3ATest)
 

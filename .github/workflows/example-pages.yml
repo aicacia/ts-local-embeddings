@@ -53,10 +53,20 @@ jobs:
         env:
           BASE_PATH: /${{ github.event.repository.name }}
 
+      - name: Build TypeDoc
+        run: pnpm build:docs
+
+      - name: Compose Pages artifact
+        run: |
+          rm -rf .pages-dist
+          mkdir -p .pages-dist/docs
+          cp -a example/build/. .pages-dist/
+          cp -a docs/. .pages-dist/docs/
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: example/build
+          path: .pages-dist
 
   deploy:
     environment:

@@ -161,6 +161,39 @@ function estimateDocumentTokenLength(
 	return Math.max(1, Math.min(maxInputTokens, estimatedTokens));
 }
 
+function isFiniteNumberArray(value: unknown): value is number[] {
+	return (
+		Array.isArray(value) &&
+		value.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+	);
+}
+
+function ensureEmbeddingMatrix(
+	value: unknown,
+	expectedLength: number,
+	errorContext: string,
+): number[][] {
+	if (!Array.isArray(value)) {
+		throw new Error(`${errorContext} output is not an array.`);
+	}
+
+	if (value.length !== expectedLength) {
+		throw new Error(
+			`${errorContext} produced ${value.length} vectors for ${expectedLength} documents.`,
+		);
+	}
+
+	for (const vector of value) {
+		if (!isFiniteNumberArray(vector)) {
+			throw new Error(
+				`${errorContext} output contains a non-numeric embedding vector.`,
+			);
+		}
+	}
+
+	return value;
+}
+
 function invokeTokenizer(
 	tokenizer: TokenizerInstance,
 	documents: string[],
@@ -277,12 +310,11 @@ export class LocalEmbeddings implements EmbeddingsInterface<number[]> {
 			});
 
 			const { sentence_embedding } = await invokeModel(model, inputs);
-			const batchEmbeddings = sentence_embedding.tolist() as number[][];
-			if (batchEmbeddings.length !== currentBatchSize) {
-				throw new Error(
-					`Embedding batch produced ${batchEmbeddings.length} vectors for ${currentBatchSize} documents.`,
-				);
-			}
+			const batchEmbeddings = ensureEmbeddingMatrix(
+				sentence_embedding.tolist(),
+				currentBatchSize,
+				"Embedding batch",
+			);
 
 			embeddings.push(...batchEmbeddings);
 			batchesProcessed += 1;
@@ -337,12 +369,11 @@ export class LocalEmbeddings implements EmbeddingsInterface<number[]> {
 
 		const { sentence_embedding } = await invokeModel(model, inputs);
 
-		const embeddings = sentence_embedding.tolist() as number[][];
-		if (embeddings.length !== 1) {
-			throw new Error(
-				`Expected exactly 1 query embedding, received ${embeddings.length}.`,
-			);
-		}
+		const embeddings = ensureEmbeddingMatrix(
+			sentence_embedding.tolist(),
+			1,
+			"Query embedding",
+		);
 
 		return embeddings[0];
 	}
