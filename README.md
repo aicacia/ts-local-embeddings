@@ -93,8 +93,6 @@ The library now uses deep internal boundary modules while keeping the public API
 - `indexedDbStoreGateway`: owns IndexedDB lifecycle/open-upgrade flow, schema checks, and low-level read/write/query operations.
 - `runtimePolicy` + `runtimeLoader`: separates fallback-selection policy from the Hugging Face runtime adapter.
 
-Implementation notes and phased acceptance criteria live in [ARCHITECTURE_ACTION_PLAN.md](ARCHITECTURE_ACTION_PLAN.md).
-
 ## Local model files
 
 If you run fully local, host model assets under your configured `modelPath`, typically:

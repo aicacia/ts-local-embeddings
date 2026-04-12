@@ -6,6 +6,16 @@ import esmImportToUrl from "rollup-plugin-esm-import-to-url";
 export default [
 	{
 		input: "esm/index.js",
+		onwarn(warning, warn) {
+			if (
+				warning.code === "CIRCULAR_DEPENDENCY" &&
+				typeof warning.message === "string" &&
+				warning.message.includes("node_modules")
+			) {
+				return;
+			}
+			warn(warning);
+		},
 		output: [
 			{
 				file: "browser/index.js",

@@ -22,9 +22,9 @@
 		"buildTS": "tsc -p tsconfig.json",
 		"buildBrowser": "rollup -c",
 		"build:docs": "typedoc",
-		"build": "npm run clean && npm run buildTS && npm run buildBrowser",
-		"doc": "npm run build:docs",
-		"prepublishOnly": "npm run build",
+		"build": "pnpm run clean && pnpm run buildTS && pnpm run buildBrowser",
+		"doc": "pnpm run build:docs",
+		"prepublishOnly": "pnpm run build",
 		"test": "node --loader ts-node/esm node_modules/tape/bin/tape src/**/*.test.{ts,tsx} | pnpm exec tap-spec",
 		"bench": "node --loader ts-node/esm node_modules/tape/bin/tape src/**/*.benchmark.{ts,tsx} | pnpm exec tap-spec",
 		"coverage": "c8 --check-coverage --lines 75 --reporter=lcov --reporter=text node --loader ts-node/esm node_modules/tape/bin/tape src/**/*.test.{ts,tsx} | pnpm exec tap-spec",
@@ -37,7 +37,7 @@
 		"ci:format": "pnpm -r format",
 		"ci:format:check": "pnpm -r format:check",
 		"github-pages:dev": "pnpm --filter @aicacia/local-embeddings-github-pages dev",
-		"preCommit": "npm run ci:format && npm run ci:lint && npm run coverage",
+		"preCommit": "pnpm run ci:format && pnpm run ci:lint && pnpm run coverage",
 		"prepare": "husky"
 	},
 	"keywords": [
