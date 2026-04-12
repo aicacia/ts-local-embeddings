@@ -42,13 +42,17 @@ function installFailingOpenOnceIndexedDb(): void {
 			} as unknown as IDBOpenDBRequest;
 
 			queueMicrotask(() => {
-				(request as IDBOpenDBRequest & {
-					readyState: IDBRequestReadyState;
-					onerror: ((event: Event) => void) | null;
-				}).readyState = "done";
-				(request as IDBOpenDBRequest & {
-					onerror: ((event: Event) => void) | null;
-				}).onerror?.(new Event("error"));
+				(
+					request as IDBOpenDBRequest & {
+						readyState: IDBRequestReadyState;
+						onerror: ((event: Event) => void) | null;
+					}
+				).readyState = "done";
+				(
+					request as IDBOpenDBRequest & {
+						onerror: ((event: Event) => void) | null;
+					}
+				).onerror?.(new Event("error"));
 			});
 
 			return request;

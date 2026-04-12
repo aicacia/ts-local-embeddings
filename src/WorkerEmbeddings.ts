@@ -208,7 +208,9 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 	}
 
 	#enqueueDocumentRequest<T>(operation: () => Promise<T>): Promise<T> {
-		const run = this.#documentRequestQueue.catch(() => undefined).then(operation);
+		const run = this.#documentRequestQueue
+			.catch(() => undefined)
+			.then(operation);
 		this.#documentRequestQueue = run.then(
 			() => undefined,
 			() => undefined,

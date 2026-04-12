@@ -159,7 +159,9 @@ class FakeWorker {
 	}
 
 	latestRequest(type: WorkerRequest["type"]): WorkerRequest {
-		const request = [...this.requests].reverse().find((entry) => entry.type === type);
+		const request = [...this.requests]
+			.reverse()
+			.find((entry) => entry.type === type);
 		if (!request) {
 			throw new Error(`expected a ${type} request`);
 		}
@@ -409,7 +411,11 @@ test("WorkerEmbeddings serializes embedDocuments requests to keep progress order
 		[[6], [4]],
 		"second request resolves after it is dispatched",
 	);
-	assert.deepEqual(events, [1, 2], "progress events stay sequential across requests");
+	assert.deepEqual(
+		events,
+		[1, 2],
+		"progress events stay sequential across requests",
+	);
 
 	embeddings.terminate();
 	assert.end();
@@ -451,6 +457,10 @@ test("WorkerEmbeddings ignores late worker messages after terminate", async (ass
 		},
 	});
 
-	assert.deepEqual(events, [], "late messages do not trigger progress callbacks");
+	assert.deepEqual(
+		events,
+		[],
+		"late messages do not trigger progress callbacks",
+	);
 	assert.end();
 });
