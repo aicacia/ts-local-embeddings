@@ -15,6 +15,47 @@ function installFakeIndexedDb(): void {
 		fakeIndexedDB as unknown as IDBFactory;
 }
 
+function installFailingOpenOnceIndexedDb(): void {
+	const baseFactory = fakeIndexedDB as unknown as IDBFactory;
+	let failed = false;
+
+	(globalThis as { indexedDB?: IDBFactory }).indexedDB = {
+		...baseFactory,
+		cmp: baseFactory.cmp.bind(baseFactory),
+		deleteDatabase: baseFactory.deleteDatabase.bind(baseFactory),
+		open: (name: string, version?: number) => {
+			if (failed) {
+				return baseFactory.open(name, version);
+			}
+
+			failed = true;
+			const request = {
+				error: new Error("simulated open failure"),
+				onerror: null,
+				onsuccess: null,
+				onblocked: null,
+				onupgradeneeded: null,
+				readyState: "pending",
+				result: undefined,
+				source: null,
+				transaction: null,
+			} as unknown as IDBOpenDBRequest;
+
+			queueMicrotask(() => {
+				(request as IDBOpenDBRequest & {
+					readyState: IDBRequestReadyState;
+					onerror: ((event: Event) => void) | null;
+				}).readyState = "done";
+				(request as IDBOpenDBRequest & {
+					onerror: ((event: Event) => void) | null;
+				}).onerror?.(new Event("error"));
+			});
+
+			return request;
+		},
+	} as unknown as IDBFactory;
+}
+
 test("IndexedDbStoreGateway open creates expected schema", async (assert) => {
 	installFakeIndexedDb();
 	const dbName = uniqueDbName();
@@ -105,5 +146,31 @@ test("IndexedDbStoreGateway close invalidates and reopen keeps persisted data", 
 	assert.equal(await gateway.count(), 1, "data remains after close/reopen");
 
 	await gateway.close();
+	assert.end();
+});
+
+test("IndexedDbStoreGateway retries open after an initial failure", async (assert) => {
+	installFailingOpenOnceIndexedDb();
+	const dbName = uniqueDbName();
+	const gateway = new IndexedDbStoreGateway({ dbName, storeName: "vectors" });
+
+	try {
+		await gateway.open();
+		assert.fail("expected first open to fail");
+	} catch (error) {
+		assert.ok(
+			error instanceof Error && /simulated open failure/i.test(error.message),
+			"first open surfaces the initial failure",
+		);
+	}
+
+	const reopened = await gateway.open();
+	assert.ok(
+		reopened.objectStoreNames.contains("vectors"),
+		"second open retries instead of reusing stale rejected state",
+	);
+
+	await gateway.close();
+	installFakeIndexedDb();
 	assert.end();
 });

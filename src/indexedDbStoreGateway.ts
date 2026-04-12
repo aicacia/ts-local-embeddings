@@ -121,7 +121,14 @@ export class IndexedDbStoreGateway {
 			return this.#dbPromise;
 		}
 
-		this.#dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+		const openPromise = new Promise<IDBDatabase>((resolve, reject) => {
+			const rejectOpen = (error: Error): void => {
+				if (this.#dbPromise === openPromise) {
+					this.#dbPromise = null;
+				}
+				reject(error);
+			};
+
 			const request = indexedDB.open(
 				this.#dbName,
 				VECTOR_STORE_SCHEMA.currentVersion,
@@ -138,7 +145,7 @@ export class IndexedDbStoreGateway {
 				const database = request.result;
 				const hasStore = database.objectStoreNames.contains(this.#storeName);
 				if (!hasStore) {
-					reject(
+					rejectOpen(
 						new Error(
 							`IndexedDB schema mismatch: missing object store '${this.#storeName}'.`,
 						),
@@ -149,12 +156,13 @@ export class IndexedDbStoreGateway {
 			};
 
 			request.onerror = () => {
-				this.#dbPromise = null;
-				reject(
+				rejectOpen(
 					request.error ?? new Error("Failed to open IndexedDB database."),
 				);
 			};
 		});
+
+		this.#dbPromise = openPromise;
 
 		return this.#dbPromise;
 	}

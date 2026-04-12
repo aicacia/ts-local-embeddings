@@ -10,6 +10,8 @@ type FakeWorkerOptions = {
 	failFirstInit?: boolean;
 	hangEmbedQuery?: boolean;
 	embedQueryErrorPayload?: WorkerResponse;
+	autoRespondToEmbedDocuments?: boolean;
+	deliverMessagesAfterTerminate?: boolean;
 };
 
 class FakeWorker {
@@ -20,18 +22,23 @@ class FakeWorker {
 	#terminated = false;
 	#options: FakeWorkerOptions;
 	lastInitOptions: WorkerRequest["payload"]["options"] | null = null;
+	requests: WorkerRequest[] = [];
 
 	constructor(options: FakeWorkerOptions = {}) {
 		this.#options = options;
 	}
 
 	postMessage(request: WorkerRequest): void {
+		this.requests.push(request);
 		if (this.#terminated) {
 			throw new Error("worker terminated");
 		}
 
 		queueMicrotask(() => {
-			if (this.#terminated || this.onmessage === null) {
+			if (
+				(this.#terminated && !this.#options.deliverMessagesAfterTerminate) ||
+				this.onmessage === null
+			) {
 				return;
 			}
 
@@ -65,6 +72,10 @@ class FakeWorker {
 					return;
 				}
 				case "embedDocuments": {
+					if (this.#options.autoRespondToEmbedDocuments === false) {
+						return;
+					}
+
 					this.onmessage({
 						data: {
 							type: "progress",
@@ -130,6 +141,36 @@ class FakeWorker {
 
 	terminate(): void {
 		this.#terminated = true;
+	}
+
+	emit(response: WorkerResponse): void {
+		if (
+			(this.#terminated && !this.#options.deliverMessagesAfterTerminate) ||
+			this.onmessage === null
+		) {
+			return;
+		}
+
+		this.onmessage({ data: response } as MessageEvent<WorkerResponse>);
+	}
+
+	requestCount(type: WorkerRequest["type"]): number {
+		return this.requests.filter((request) => request.type === type).length;
+	}
+
+	latestRequest(type: WorkerRequest["type"]): WorkerRequest {
+		const request = [...this.requests].reverse().find((entry) => entry.type === type);
+		if (!request) {
+			throw new Error(`expected a ${type} request`);
+		}
+
+		return request;
+	}
+}
+
+async function flushMicrotasks(iterations = 4): Promise<void> {
+	for (let index = 0; index < iterations; index += 1) {
+		await Promise.resolve();
 	}
 }
 
@@ -282,5 +323,134 @@ test("WorkerEmbeddings emits progress updates", async (assert) => {
 	);
 
 	embeddings.terminate();
+	assert.end();
+});
+
+test("WorkerEmbeddings serializes embedDocuments requests to keep progress ordered", async (assert) => {
+	const worker = new FakeWorker({ autoRespondToEmbedDocuments: false });
+	const events: number[] = [];
+	const embeddings = new WorkerEmbeddings({
+		worker: worker as unknown as Worker,
+		onProgress: (progress) => {
+			events.push(progress.event.totalDocuments);
+		},
+	});
+
+	const firstRequestPromise = embeddings.embedDocuments(["first"]);
+	await flushMicrotasks();
+	const secondRequestPromise = embeddings.embedDocuments(["second", "pair"]);
+	await flushMicrotasks();
+
+	assert.equal(
+		worker.requestCount("embedDocuments"),
+		1,
+		"only the first embedDocuments request is sent while it is in flight",
+	);
+
+	const firstRequest = worker.latestRequest("embedDocuments");
+	worker.emit({
+		type: "progress",
+		requestId: firstRequest.requestId,
+		payload: {
+			requestType: "embedDocuments",
+			event: {
+				type: "batch",
+				batchNumber: 1,
+				batchDocuments: 1,
+				batchTokens: 5,
+				processedAfterBatch: 1,
+				totalDocuments: 1,
+			},
+		},
+	});
+	worker.emit({
+		type: "documentsEmbedded",
+		requestId: firstRequest.requestId,
+		payload: {
+			embeddings: [[5]],
+		},
+	});
+
+	assert.deepEqual(await firstRequestPromise, [[5]], "first request resolves");
+	await flushMicrotasks();
+
+	assert.equal(
+		worker.requestCount("embedDocuments"),
+		2,
+		"second embedDocuments request is sent after the first one completes",
+	);
+
+	const secondRequest = worker.latestRequest("embedDocuments");
+	worker.emit({
+		type: "progress",
+		requestId: secondRequest.requestId,
+		payload: {
+			requestType: "embedDocuments",
+			event: {
+				type: "batch",
+				batchNumber: 1,
+				batchDocuments: 2,
+				batchTokens: 10,
+				processedAfterBatch: 2,
+				totalDocuments: 2,
+			},
+		},
+	});
+	worker.emit({
+		type: "documentsEmbedded",
+		requestId: secondRequest.requestId,
+		payload: {
+			embeddings: [[6], [4]],
+		},
+	});
+
+	assert.deepEqual(
+		await secondRequestPromise,
+		[[6], [4]],
+		"second request resolves after it is dispatched",
+	);
+	assert.deepEqual(events, [1, 2], "progress events stay sequential across requests");
+
+	embeddings.terminate();
+	assert.end();
+});
+
+test("WorkerEmbeddings ignores late worker messages after terminate", async (assert) => {
+	const worker = new FakeWorker({ deliverMessagesAfterTerminate: true });
+	const events: number[] = [];
+	const embeddings = new WorkerEmbeddings({
+		worker: worker as unknown as Worker,
+		onProgress: (progress) => {
+			events.push(progress.event.totalDocuments);
+		},
+	});
+
+	await embeddings.embedQuery("ready");
+	embeddings.terminate();
+
+	worker.emit({
+		type: "progress",
+		requestId: 999,
+		payload: {
+			requestType: "embedDocuments",
+			event: {
+				type: "batch",
+				batchNumber: 1,
+				batchDocuments: 1,
+				batchTokens: 1,
+				processedAfterBatch: 1,
+				totalDocuments: 1,
+			},
+		},
+	});
+	worker.emit({
+		type: "queryEmbedded",
+		requestId: 1000,
+		payload: {
+			embedding: [1],
+		},
+	});
+
+	assert.deepEqual(events, [], "late messages do not trigger progress callbacks");
 	assert.end();
 });

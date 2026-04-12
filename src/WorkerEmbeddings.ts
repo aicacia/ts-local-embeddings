@@ -37,6 +37,7 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 	readonly #worker: Worker;
 	readonly #channel: WorkerChannel;
 	#initialization: Promise<void> | null;
+	#documentRequestQueue: Promise<void> = Promise.resolve();
 	readonly #runtimeOptions: LoadEmbeddingRuntimeOptions | undefined;
 	readonly #onProgress: WorkerEmbeddingsOptions["onProgress"];
 	#terminated = false;
@@ -73,6 +74,10 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 		this.#onProgress = options.onProgress;
 
 		this.#worker.onmessage = (event: MessageEvent<unknown>): void => {
+			if (this.#terminated) {
+				return;
+			}
+
 			if (!isWorkerResponse(event.data)) {
 				this.#handleWorkerFailure("Embedding worker sent an invalid response.");
 				return;
@@ -87,10 +92,18 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 		};
 
 		this.#worker.onerror = (event): void => {
+			if (this.#terminated) {
+				return;
+			}
+
 			this.#handleWorkerFailure(event.message || "Embedding worker crashed.");
 		};
 
 		this.#worker.onmessageerror = (): void => {
+			if (this.#terminated) {
+				return;
+			}
+
 			this.#handleWorkerFailure(
 				"Embedding worker message deserialization failed.",
 			);
@@ -105,14 +118,17 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 		}
 
 		this.#terminated = true;
+		this.#detachWorkerHandlers();
 		this.#channel.handleFailure("Embedding worker terminated.");
 		this.#worker.terminate();
 	}
 
 	async embedDocuments(documents: string[]): Promise<number[][]> {
-		await this.#ensureInitialized();
-		const embeddings = await this.#request("embedDocuments", { documents });
-		return embeddings;
+		return this.#enqueueDocumentRequest(async () => {
+			await this.#ensureInitialized();
+			const embeddings = await this.#request("embedDocuments", { documents });
+			return embeddings;
+		});
 	}
 
 	async embedQuery(document: string): Promise<number[]> {
@@ -180,8 +196,24 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 		}
 
 		this.#terminated = true;
+		this.#detachWorkerHandlers();
 		this.#channel.handleFailure(message);
 		this.#worker.terminate();
+	}
+
+	#detachWorkerHandlers(): void {
+		this.#worker.onmessage = null;
+		this.#worker.onerror = null;
+		this.#worker.onmessageerror = null;
+	}
+
+	#enqueueDocumentRequest<T>(operation: () => Promise<T>): Promise<T> {
+		const run = this.#documentRequestQueue.catch(() => undefined).then(operation);
+		this.#documentRequestQueue = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		return run;
 	}
 
 	#mapResponseToResult<T extends keyof WorkerRequestMap>(
