@@ -1,5 +1,9 @@
 import test from "tape";
-import { indexedDB as fakeIndexedDB } from "fake-indexeddb";
+import {
+	IDBIndex as FakeIDBIndex,
+	IDBObjectStore as FakeIDBObjectStore,
+	indexedDB as fakeIndexedDB,
+} from "fake-indexeddb";
 import {
 	IndexedDbStoreGateway,
 	VECTOR_STORE_SCHEMA,
@@ -58,6 +62,22 @@ function installFailingOpenOnceIndexedDb(): void {
 			return request;
 		},
 	} as unknown as IDBFactory;
+}
+
+function patchMissingGetAll(): { restore: () => void } {
+	const originalObjectStoreGetAll = (FakeIDBObjectStore.prototype as any)
+		.getAll;
+	const originalIndexGetAll = (FakeIDBIndex.prototype as any).getAll;
+
+	(FakeIDBObjectStore.prototype as any).getAll = undefined;
+	(FakeIDBIndex.prototype as any).getAll = undefined;
+
+	return {
+		restore: () => {
+			(FakeIDBObjectStore.prototype as any).getAll = originalObjectStoreGetAll;
+			(FakeIDBIndex.prototype as any).getAll = originalIndexGetAll;
+		},
+	};
 }
 
 test("IndexedDbStoreGateway open creates expected schema", async (assert) => {
@@ -127,6 +147,44 @@ test("IndexedDbStoreGateway put/get/query/count/clear lifecycle", async (assert)
 	assert.end();
 });
 
+test("IndexedDbStoreGateway works with getAll unavailable", async (assert) => {
+	installFakeIndexedDb();
+	const { restore } = patchMissingGetAll();
+	try {
+		const dbName = uniqueDbName();
+		const gateway = new IndexedDbStoreGateway({ dbName, storeName: "vectors" });
+		const records: StoredVectorRecord[] = [
+			{
+				id: "1",
+				content: "hello world",
+				embeddingSpace: "space-1",
+				contentHash: "h1",
+				cacheKey: "space-1:h1",
+				embedding: [1, 0],
+				metadata: {},
+			},
+		];
+
+		await gateway.put(records);
+		assert.equal(await gateway.count(), 1, "count still works without getAll");
+
+		const all = await gateway.getAll();
+		assert.equal(all.length, 1, "fallback getAll returns all records");
+
+		const queried = await gateway.queryByContentHash(
+			["h1"],
+			["hello world"],
+			(record) => record.embeddingSpace === "space-1",
+		);
+		assert.equal(queried[0]?.id, "1", "fallback queryByContentHash returns matching record");
+
+		await gateway.close();
+	} finally {
+		restore();
+	}
+
+	assert.end();
+});
 test("IndexedDbStoreGateway close invalidates and reopen keeps persisted data", async (assert) => {
 	installFakeIndexedDb();
 	const dbName = uniqueDbName();

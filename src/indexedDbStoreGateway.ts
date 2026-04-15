@@ -73,6 +73,60 @@ export function transactionDone(transaction: IDBTransaction): Promise<void> {
 	});
 }
 
+function hasIndex(store: IDBObjectStore, indexName: string): boolean {
+	const indexNames = store.indexNames;
+	if (
+		typeof (indexNames as { contains?: unknown }).contains === "function"
+	) {
+		return (
+			indexNames as {
+				contains(name: string): boolean;
+			}
+		).contains(indexName);
+	}
+
+	for (let index = 0; index < indexNames.length; index += 1) {
+		if (indexNames[index] === indexName) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function getAllRecords<T>(
+	source: IDBObjectStore | IDBIndex,
+	query?: IDBValidKey | IDBKeyRange,
+): Promise<T[]> {
+	const getAll = (source as { getAll?: unknown }).getAll;
+	if (typeof getAll === "function") {
+		return requestToPromise(
+			(getAll as {
+				(query?: IDBValidKey | IDBKeyRange): IDBRequest<T[]>;
+			}).call(source, query),
+		);
+	}
+
+	return new Promise<T[]>((resolve, reject) => {
+		const records: T[] = [];
+		const request = source.openCursor(query);
+		request.onsuccess = () => {
+			const cursor = request.result;
+			if (!cursor) {
+				resolve(records);
+				return;
+			}
+
+			records.push(cursor.value);
+			cursor.continue();
+		};
+		request.onerror = () =>
+			reject(
+				request.error ?? new Error("IndexedDB cursor iteration failed."),
+			);
+	});
+}
+
 function applyMigrations(
 	request: IDBOpenDBRequest,
 	oldVersion: number,
@@ -180,8 +234,8 @@ export class IndexedDbStoreGateway {
 	async getAll(): Promise<StoredVectorRecord[]> {
 		const database = await this.open();
 		const transaction = database.transaction(this.#storeName, "readonly");
-		const records = await requestToPromise(
-			transaction.objectStore(this.#storeName).getAll(),
+		const records = await getAllRecords<StoredVectorRecord>(
+			transaction.objectStore(this.#storeName),
 		);
 		await transactionDone(transaction);
 		return records;
@@ -200,13 +254,12 @@ export class IndexedDbStoreGateway {
 		const transaction = database.transaction(this.#storeName, "readonly");
 		const store = transaction.objectStore(this.#storeName);
 
-		if (store.indexNames.contains(VECTOR_STORE_SCHEMA.contentHashIndex)) {
+		if (hasIndex(store, VECTOR_STORE_SCHEMA.contentHashIndex)) {
 			const directMatches = await Promise.all(
 				contentHashes.map(async (contentHash, index) => {
-					const matches = await requestToPromise(
-						store
-							.index(VECTOR_STORE_SCHEMA.contentHashIndex)
-							.getAll(contentHash),
+					const matches = await getAllRecords<StoredVectorRecord>(
+						store.index(VECTOR_STORE_SCHEMA.contentHashIndex),
+						contentHash,
 					);
 
 					return (
@@ -221,7 +274,7 @@ export class IndexedDbStoreGateway {
 			return directMatches;
 		}
 
-		const allRecords = await requestToPromise(store.getAll());
+		const allRecords = await getAllRecords<StoredVectorRecord>(store);
 		const recordByHash = new Map<string, StoredVectorRecord>();
 		const recordByContent = new Map<string, StoredVectorRecord>();
 
