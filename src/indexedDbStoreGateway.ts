@@ -127,6 +127,40 @@ function getAllRecords<T>(
 	});
 }
 
+function iterateRecords<T>(
+	source: IDBObjectStore | IDBIndex,
+	callback: (record: T) => Promise<boolean | void> | boolean | void,
+	query?: IDBValidKey | IDBKeyRange,
+): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		const request = source.openCursor(query);
+		request.onsuccess = async () => {
+			const cursor = request.result;
+			if (!cursor) {
+				resolve();
+				return;
+			}
+
+			try {
+				const shouldContinue = await callback(cursor.value);
+				if (shouldContinue === false) {
+					resolve();
+					return;
+				}
+			} catch (error) {
+				reject(error);
+				return;
+			}
+
+			cursor.continue();
+		};
+		request.onerror = () =>
+			reject(
+				request.error ?? new Error("IndexedDB cursor iteration failed."),
+			);
+	});
+}
+
 function applyMigrations(
 	request: IDBOpenDBRequest,
 	oldVersion: number,
@@ -239,6 +273,18 @@ export class IndexedDbStoreGateway {
 		);
 		await transactionDone(transaction);
 		return records;
+	}
+
+	async iterateAll<T>(
+		callback: (record: T) => Promise<boolean | void> | boolean | void,
+	): Promise<void> {
+		const database = await this.open();
+		const transaction = database.transaction(this.#storeName, "readonly");
+		await iterateRecords<T>(
+			transaction.objectStore(this.#storeName),
+			callback,
+		);
+		await transactionDone(transaction);
 	}
 
 	async queryByContentHash(

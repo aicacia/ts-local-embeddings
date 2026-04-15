@@ -2,6 +2,7 @@ import { Document } from "@langchain/core/documents";
 import test from "tape";
 import {
 	createVectorWritePipeline,
+	resolveRecordId,
 	type StoredVectorRecord,
 } from "./vectorWritePipeline.js";
 
@@ -49,6 +50,37 @@ test("vectorWritePipeline dedups groups and fans out a single embedding", async 
 	assert.equal(writes.length, 3, "all input documents are written");
 	assert.equal(result.insertedCount, 3, "summary reports inserted count");
 	assert.equal(result.dedupGroupCount, 2, "summary reports dedup group count");
+	assert.end();
+});
+
+test("resolveRecordId uses deterministic fallback when randomUUID is unavailable", async (assert) => {
+	const document = createDocument("fallback-content", { foo: "bar" });
+	const originalRandomUUID = (globalThis as any).crypto?.randomUUID;
+
+	try {
+		if (globalThis.crypto) {
+			(globalThis.crypto as any).randomUUID = undefined;
+		}
+
+		const firstId = resolveRecordId(document, 0);
+		const secondId = resolveRecordId(document, 1);
+
+		assert.equal(
+			firstId.startsWith("doc-fallback-"),
+			true,
+			"fallback id is generated when randomUUID is unavailable",
+		);
+		assert.notEqual(
+			firstId,
+			secondId,
+			"different fallbackIndex yields distinct deterministic ids",
+		);
+	} finally {
+		if (globalThis.crypto && typeof originalRandomUUID !== "undefined") {
+			(globalThis.crypto as any).randomUUID = originalRandomUUID;
+		}
+	}
+
 	assert.end();
 });
 

@@ -2,6 +2,7 @@ import { Document } from "@langchain/core/documents";
 import test from "tape";
 import { indexedDB as fakeIndexedDB } from "fake-indexeddb";
 import { IndexedDBVectorStore } from "./IndexedDBVectorStore.js";
+import { IndexedDbStoreGateway } from "./indexedDbStoreGateway.js";
 
 function uniqueDbName(): string {
 	return `vector-store-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -43,6 +44,37 @@ test("IndexedDBVectorStore addDocuments and similarity search work through gatew
 	await store.close();
 	assert.end();
 });
+
+test(
+	"IndexedDBVectorStore similaritySearchWithScore does not use bulk getAll",
+	async (assert) => {
+		installFakeIndexedDb();
+		const store = new IndexedDBVectorStore(embeddings, {
+			dbName: uniqueDbName(),
+		});
+
+		await store.addDocuments([
+			new Document({ pageContent: "aaaa" }),
+			new Document({ pageContent: "bbbb" }),
+		]);
+
+		const originalGetAll = IndexedDbStoreGateway.prototype.getAll;
+		IndexedDbStoreGateway.prototype.getAll = async () => {
+			throw new Error("getAll should not be called for queryVectors");
+		};
+
+		try {
+			const results = await store.similaritySearchWithScore("aaa", 1);
+			assert.equal(results.length, 1, "returns one result");
+			assert.equal(results[0]?.[0].pageContent, "aaaa", "returns nearest document");
+		} finally {
+			IndexedDbStoreGateway.prototype.getAll = originalGetAll;
+		}
+
+		await store.close();
+		assert.end();
+	},
+);
 
 test("IndexedDBVectorStore close and reopen via fromExistingIndex preserves data", async (assert) => {
 	installFakeIndexedDb();

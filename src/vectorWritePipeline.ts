@@ -89,7 +89,12 @@ export function resolveRecordId(
 		return crypto.randomUUID();
 	}
 
-	return `doc-${Date.now()}-${fallbackIndex}`;
+	const metadataString = JSON.stringify(
+		(document.metadata as Record<string, unknown> | undefined) ?? {},
+	);
+	return `doc-${fallbackHash(
+		`${document.pageContent}:${metadataString}:${fallbackIndex}`,
+	)}`;
 }
 
 export function mapStoredVectorRecord(args: {

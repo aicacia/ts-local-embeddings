@@ -240,30 +240,64 @@ export class IndexedDBVectorStore {
 			id: string;
 		}>
 	> {
-		const records = await this.#getAllRecords();
-		return records
-			.filter((record) => {
-				if (!filter) {
-					return true;
-				}
+		if (k <= 0) {
+			return [];
+		}
 
-				return filter(
-					new Document({
-						metadata: record.metadata,
-						pageContent: record.content,
-						id: record.id,
-					}),
-				);
-			})
-			.map((record) => ({
+		const topMatches: Array<{
+			similarity: number;
+			metadata: Record<string, unknown>;
+			content: string;
+			embedding: number[];
+			id: string;
+		}> = [];
+
+		const maybePushMatch = (
+			match: {
+				similarity: number;
+				metadata: Record<string, unknown>;
+				content: string;
+				embedding: number[];
+				id: string;
+			},
+		) => {
+			if (topMatches.length < k) {
+				topMatches.push(match);
+				topMatches.sort((left, right) => right.similarity - left.similarity);
+				return;
+			}
+
+			const lowest = topMatches[topMatches.length - 1];
+			if (match.similarity <= lowest.similarity) {
+				return;
+			}
+
+			topMatches[topMatches.length - 1] = match;
+			topMatches.sort((left, right) => right.similarity - left.similarity);
+		};
+
+		await this.#gateway.iterateAll<StoredVectorRecord>(async (record) => {
+			if (filter) {
+				const doc = new Document({
+					metadata: record.metadata,
+					pageContent: record.content,
+					id: record.id,
+				});
+				if (!filter(doc)) {
+					return;
+				}
+			}
+
+			maybePushMatch({
 				similarity: this.#similarity(query, record.embedding),
 				metadata: record.metadata,
 				content: record.content,
 				embedding: record.embedding,
 				id: record.id,
-			}))
-			.sort((left, right) => right.similarity - left.similarity)
-			.slice(0, Math.max(0, k));
+			});
+		});
+
+		return topMatches;
 	}
 
 	#matchesEmbeddingSpace(
@@ -294,3 +328,4 @@ export class IndexedDBVectorStore {
 		return this.#embeddingSpacePromise;
 	}
 }
+
