@@ -321,6 +321,8 @@ export class IndexedDbStoreGateway {
 		}
 
 		const allRecords = await getAllRecords<StoredVectorRecord>(store);
+		// Fallback path: if the contentHash index is missing, this performs a full
+		// scan of the store so old database versions remain compatible.
 		const recordByHash = new Map<string, StoredVectorRecord>();
 		const recordByContent = new Map<string, StoredVectorRecord>();
 

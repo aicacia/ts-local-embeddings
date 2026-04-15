@@ -117,6 +117,8 @@ export function resolveBatchLimits(maxInputTokens: number): {
 	targetBatchTokens: number;
 	maxDocumentsPerBatch: number;
 } {
+	// `navigator.deviceMemory` is browser-only. When unavailable, fall back to
+	// conservative batch limits rather than assuming large device memory.
 	const nav =
 		typeof navigator !== "undefined"
 			? (navigator as Navigator & { deviceMemory?: number })
@@ -161,6 +163,8 @@ export function estimateDocumentTokenLength(
 	document: string,
 	maxInputTokens: number,
 ): number {
+	// Estimate token count heuristically. Multibyte text often consumes more tokens,
+	// so use a conservative character-per-token ratio to avoid overfilling batches.
 	const likelyMultibyteText = Array.from(document).some(
 		(char) => char.charCodeAt(0) > 255,
 	);

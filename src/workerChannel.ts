@@ -81,7 +81,8 @@ export class WorkerChannel {
 	}
 
 	handleFailure(message: string): void {
-		for (const requestId of this.#pendingRequests.keys()) {
+		const requestIds = Array.from(this.#pendingRequests.keys());
+		for (const requestId of requestIds) {
 			const pending = this.#clearPendingRequest(requestId);
 			pending?.reject(new Error(message));
 		}
