@@ -53,7 +53,7 @@ test("IndexedDBVectorStore maxMarginalRelevanceSearch returns Document instances
 
 	await store.addDocuments([
 		new Document({ pageContent: "ab" }),
-		new Document({ pageContent: "ba" }),
+		new Document({ pageContent: "aaa" }),
 	]);
 
 	const results: Document[] = await store.maxMarginalRelevanceSearch("ab", {
