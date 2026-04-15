@@ -45,6 +45,29 @@ test("IndexedDBVectorStore addDocuments and similarity search work through gatew
 	assert.end();
 });
 
+test("IndexedDBVectorStore maxMarginalRelevanceSearch returns Document instances", async (assert) => {
+	installFakeIndexedDb();
+	const store = new IndexedDBVectorStore(embeddings, {
+		dbName: uniqueDbName(),
+	});
+
+	await store.addDocuments([
+		new Document({ pageContent: "ab" }),
+		new Document({ pageContent: "ba" }),
+	]);
+
+	const results: Document[] = await store.maxMarginalRelevanceSearch("ab", {
+		k: 1,
+		fetchK: 2,
+	});
+
+	assert.equal(results.length, 1, "returns one result");
+	assert.equal(results[0]?.pageContent, "ab", "returns nearest document");
+
+	await store.close();
+	assert.end();
+});
+
 test(
 	"IndexedDBVectorStore similaritySearchWithScore does not use bulk getAll",
 	async (assert) => {

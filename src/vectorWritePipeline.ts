@@ -24,7 +24,7 @@ export type VectorWriteDedupStrategy =
 export type VectorWriteResult = {
 	insertedCount: number;
 	reusedEmbeddingCount: number;
-	dedupGroupCount: number;
+	dedupGroupCount: number; // number of unique dedup groups processed
 };
 
 export type VectorWritePipeline = {
@@ -323,11 +323,24 @@ export function createVectorWritePipeline(
 				}
 			}
 
+			const uniqueGroupKeys = new Set<string>();
+			for (let index = 0; index < recordsToWrite.length; index += 1) {
+				const record = recordsToWrite[index];
+				uniqueGroupKeys.add(
+					resolveGroupKey(
+						dedupStrategy,
+						record.contentHash ?? "",
+						documents[index],
+						index,
+					),
+				);
+			}
+
 			await options.putRecords(recordsToWrite);
 			return {
 				insertedCount: recordsToWrite.length,
 				reusedEmbeddingCount: 0,
-				dedupGroupCount: recordsToWrite.length,
+				dedupGroupCount: uniqueGroupKeys.size,
 			};
 		},
 	};

@@ -117,6 +117,32 @@ test("vectorWritePipeline strict mode rejects repeated content vector mismatch",
 	assert.end();
 });
 
+test("vectorWritePipeline addVectors reports unique dedup groups", async (assert) => {
+	const writes: StoredVectorRecord[] = [];
+	const pipeline = createVectorWritePipeline({
+		embeddings: {
+			embedDocuments: async () => [],
+			embedQuery: async () => [0],
+		},
+		resolveEmbeddingSpace: async () => "space-1",
+		getCachedRecords: async () => [],
+		putRecords: async (records) => {
+			writes.push(...records);
+		},
+		dedupStrategy: "contentAndText",
+	});
+
+	const result = await pipeline.addVectors(
+		[[1], [2], [3]],
+		[createDocument("repeat"), createDocument("repeat"), createDocument("unique")],
+	);
+
+	assert.equal(result.insertedCount, 3, "insertedCount still reflects all written records");
+	assert.equal(result.dedupGroupCount, 2, "dedupGroupCount reports unique groups");
+	assert.equal(writes.length, 3, "all records are still written for addVectors");
+	assert.end();
+});
+
 test("vectorWritePipeline reuses cached embeddings by content hash and space", async (assert) => {
 	let embedCalls = 0;
 	const writes: StoredVectorRecord[] = [];

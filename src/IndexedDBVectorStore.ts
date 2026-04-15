@@ -132,7 +132,7 @@ export class IndexedDBVectorStore {
 			lambda?: number;
 			filter?: IndexedDBVectorStoreFilter;
 		},
-	): Promise<DocumentInterface[]> {
+	): Promise<Document[]> {
 		const queryEmbedding = await this.#embeddings.embedQuery(query);
 		const searches = await this.#queryVectors(
 			queryEmbedding,
