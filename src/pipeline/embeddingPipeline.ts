@@ -1,5 +1,8 @@
-import type { ModelInstance, TokenizerInstance } from "./embeddingRuntime.js";
-import { isDebugLoggingEnabled } from "./debug.js";
+import type {
+	ModelInstance,
+	TokenizerInstance,
+} from "../runtime/embeddingRuntime.js";
+import { isDebugLoggingEnabled } from "../debug.js";
 
 export type LocalEmbeddingsRuntime = {
 	tokenizer: TokenizerInstance | Promise<TokenizerInstance>;

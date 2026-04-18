@@ -10,6 +10,13 @@
 	"module": "esm/index.js",
 	"main": "esm/index.js",
 	"types": "types/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./esm/index.js",
+			"require": "./esm/index.js"
+		},
+		"./package.json": "./package.json"
+	},
 	"files": [
 		"esm/",
 		"types/",
@@ -19,7 +26,7 @@
 		"LICENSE-APACHE"
 	],
 	"scripts": {
-		"tape:runner": "node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' node_modules/tape/bin/tape",
+		"tape:runner": "TS_NODE_TRANSPILE_ONLY=true node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' node_modules/tape/bin/tape",
 		"buildTS": "tsc -p tsconfig.json",
 		"buildBrowser": "rollup -c",
 		"build:docs": "typedoc",

@@ -1,12 +1,13 @@
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
-import type { LoadEmbeddingRuntimeOptions } from "./embeddingRuntime.js";
-import { isDebugLoggingEnabled } from "./debug.js";
+import type { LoadEmbeddingRuntimeOptions } from "../runtime/embeddingRuntime.js";
+import { isDebugLoggingEnabled } from "../debug.js";
 import type {
 	WorkerRequestMap,
 	WorkerResponseMap,
 	SerializedError,
 	WorkerSuccessResponse,
 } from "./embeddingWorkerProtocol.js";
+import type { WorkerPort } from "./workerPort.js";
 import {
 	isSerializedError,
 	isWorkerResponse,
@@ -15,7 +16,7 @@ import { WorkerChannel } from "./workerChannel.js";
 
 export type WorkerEmbeddingsOptions = {
 	runtime?: LoadEmbeddingRuntimeOptions;
-	worker?: Worker;
+	worker?: WorkerPort;
 	requestTimeoutMs?: number;
 	onProgress?: (progress: WorkerResponseMap["progress"]) => void;
 };
@@ -34,7 +35,7 @@ type WorkerResultByRequestType = {
 };
 
 export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
-	readonly #worker: Worker;
+	readonly #worker: WorkerPort;
 	readonly #channel: WorkerChannel;
 	#initialization: Promise<void> | null;
 	#documentRequestQueue: Promise<void> = Promise.resolve();

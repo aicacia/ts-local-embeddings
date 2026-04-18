@@ -55,11 +55,12 @@ test("vectorWritePipeline dedups groups and fans out a single embedding", async 
 
 test("resolveRecordId uses deterministic fallback when randomUUID is unavailable", async (assert) => {
 	const document = createDocument("fallback-content", { foo: "bar" });
-	const originalRandomUUID = (globalThis as any).crypto?.randomUUID;
+	const originalRandomUUID = globalThis.crypto?.randomUUID;
 
 	try {
 		if (globalThis.crypto) {
-			(globalThis.crypto as any).randomUUID = undefined;
+			// @ts-expect-error
+			globalThis.crypto.randomUUID = undefined;
 		}
 
 		const firstId = resolveRecordId(document, 0);
@@ -77,7 +78,7 @@ test("resolveRecordId uses deterministic fallback when randomUUID is unavailable
 		);
 	} finally {
 		if (globalThis.crypto && typeof originalRandomUUID !== "undefined") {
-			(globalThis.crypto as any).randomUUID = originalRandomUUID;
+			globalThis.crypto.randomUUID = originalRandomUUID;
 		}
 	}
 
@@ -134,12 +135,28 @@ test("vectorWritePipeline addVectors reports unique dedup groups", async (assert
 
 	const result = await pipeline.addVectors(
 		[[1], [2], [3]],
-		[createDocument("repeat"), createDocument("repeat"), createDocument("unique")],
+		[
+			createDocument("repeat"),
+			createDocument("repeat"),
+			createDocument("unique"),
+		],
 	);
 
-	assert.equal(result.insertedCount, 3, "insertedCount still reflects all written records");
-	assert.equal(result.dedupGroupCount, 2, "dedupGroupCount reports unique groups");
-	assert.equal(writes.length, 3, "all records are still written for addVectors");
+	assert.equal(
+		result.insertedCount,
+		3,
+		"insertedCount still reflects all written records",
+	);
+	assert.equal(
+		result.dedupGroupCount,
+		2,
+		"dedupGroupCount reports unique groups",
+	);
+	assert.equal(
+		writes.length,
+		3,
+		"all records are still written for addVectors",
+	);
 	assert.end();
 });
 

@@ -2,6 +2,15 @@
 	"$schema": "node_modules/@biomejs/biome/configuration_schema.json",
 	"files": {
 		"ignoreUnknown": true,
-		"ignore": ["browser/**/*", "esm/**/*", "types/**/*", "github-pages/**/*"]
+		"ignore": [
+			"browser/**/*",
+			"coverage/**/*",
+			".nyc_output/**/*",
+			"docs/**/*",
+			"esm/**/*",
+			"github-pages/**/*",
+			"node_modules/**/*",
+			"types/**/*"
+		]
 	}
 }

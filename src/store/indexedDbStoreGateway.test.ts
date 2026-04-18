@@ -65,17 +65,18 @@ function installFailingOpenOnceIndexedDb(): void {
 }
 
 function patchMissingGetAll(): { restore: () => void } {
-	const originalObjectStoreGetAll = (FakeIDBObjectStore.prototype as any)
-		.getAll;
-	const originalIndexGetAll = (FakeIDBIndex.prototype as any).getAll;
+	const originalObjectStoreGetAll = FakeIDBObjectStore.prototype.getAll;
+	const originalIndexGetAll = FakeIDBIndex.prototype.getAll;
 
-	(FakeIDBObjectStore.prototype as any).getAll = undefined;
-	(FakeIDBIndex.prototype as any).getAll = undefined;
+	// @ts-expect-error
+	FakeIDBObjectStore.prototype.getAll = undefined;
+	// @ts-expect-error
+	FakeIDBIndex.prototype.getAll = undefined;
 
 	return {
 		restore: () => {
-			(FakeIDBObjectStore.prototype as any).getAll = originalObjectStoreGetAll;
-			(FakeIDBIndex.prototype as any).getAll = originalIndexGetAll;
+			FakeIDBObjectStore.prototype.getAll = originalObjectStoreGetAll;
+			FakeIDBIndex.prototype.getAll = originalIndexGetAll;
 		},
 	};
 }
@@ -176,7 +177,11 @@ test("IndexedDbStoreGateway works with getAll unavailable", async (assert) => {
 			["hello world"],
 			(record) => record.embeddingSpace === "space-1",
 		);
-		assert.equal(queried[0]?.id, "1", "fallback queryByContentHash returns matching record");
+		assert.equal(
+			queried[0]?.id,
+			"1",
+			"fallback queryByContentHash returns matching record",
+		);
 
 		await gateway.close();
 	} finally {

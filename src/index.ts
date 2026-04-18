@@ -1,11 +1,11 @@
-export { loadEmbeddingRuntime } from "./embeddingRuntime.js";
+export { loadEmbeddingRuntime } from "./runtime/embeddingRuntime.js";
 export type {
 	TokenizerInstance,
 	ModelInstance,
 	EmbeddingModelFallback,
 	EmbeddingRuntime,
 	LoadEmbeddingRuntimeOptions,
-} from "./embeddingRuntime.js";
+} from "./runtime/embeddingRuntime.js";
 
 export type {
 	WorkerInitPayload,
@@ -16,22 +16,22 @@ export type {
 	WorkerResponseMap,
 	WorkerResponseType,
 	WorkerResponse,
-} from "./embeddingWorkerProtocol.js";
+} from "./worker/embeddingWorkerProtocol.js";
 
-export { LocalEmbeddings } from "./LocalEmbeddings.js";
+export { LocalEmbeddings } from "./pipeline/LocalEmbeddings.js";
 export type {
 	LocalEmbeddingsRuntime,
 	EmbeddingPipelineEvent,
 	EmbeddingPipelineHooks,
-} from "./LocalEmbeddings.js";
+} from "./pipeline/LocalEmbeddings.js";
 
-export { WorkerEmbeddings } from "./WorkerEmbeddings.js";
-export type { WorkerEmbeddingsOptions } from "./WorkerEmbeddings.js";
+export { WorkerEmbeddings } from "./worker/WorkerEmbeddings.js";
+export type { WorkerEmbeddingsOptions } from "./worker/WorkerEmbeddings.js";
 
-export { IndexedDBVectorStore } from "./IndexedDBVectorStore.js";
+export { IndexedDBVectorStore } from "./store/IndexedDBVectorStore.js";
 export type {
 	IndexedDBVectorStoreFilter,
 	IndexedDBVectorStoreArgs,
-} from "./IndexedDBVectorStore.js";
+} from "./store/IndexedDBVectorStore.js";
 
 export { setDebugLogging } from "./debug.js";

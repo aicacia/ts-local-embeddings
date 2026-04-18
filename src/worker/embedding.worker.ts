@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
 
-import { LocalEmbeddings } from "./LocalEmbeddings.js";
-import { setDebugLogging } from "./debug.js";
-import { loadEmbeddingRuntime } from "./embeddingRuntime.js";
+import { LocalEmbeddings } from "../pipeline/LocalEmbeddings.js";
+import { setDebugLogging } from "../debug.js";
+import { loadEmbeddingRuntime } from "../runtime/embeddingRuntime.js";
 import type {
 	SerializedError,
 	WorkerRequest,

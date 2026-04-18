@@ -75,9 +75,7 @@ export function transactionDone(transaction: IDBTransaction): Promise<void> {
 
 function hasIndex(store: IDBObjectStore, indexName: string): boolean {
 	const indexNames = store.indexNames;
-	if (
-		typeof (indexNames as { contains?: unknown }).contains === "function"
-	) {
+	if (typeof (indexNames as { contains?: unknown }).contains === "function") {
 		return (
 			indexNames as {
 				contains(name: string): boolean;
@@ -100,11 +98,7 @@ function getAllRecords<T>(
 ): Promise<T[]> {
 	const getAll = (source as { getAll?: unknown }).getAll;
 	if (typeof getAll === "function") {
-		return requestToPromise(
-			(getAll as {
-				(query?: IDBValidKey | IDBKeyRange): IDBRequest<T[]>;
-			}).call(source, query),
-		);
+		return requestToPromise(getAll.call(source, query));
 	}
 
 	return new Promise<T[]>((resolve, reject) => {
@@ -121,15 +115,13 @@ function getAllRecords<T>(
 			cursor.continue();
 		};
 		request.onerror = () =>
-			reject(
-				request.error ?? new Error("IndexedDB cursor iteration failed."),
-			);
+			reject(request.error ?? new Error("IndexedDB cursor iteration failed."));
 	});
 }
 
 function iterateRecords<T>(
 	source: IDBObjectStore | IDBIndex,
-	callback: (record: T) => Promise<boolean | void> | boolean | void,
+	callback: (record: T) => Promise<boolean | undefined> | boolean | undefined,
 	query?: IDBValidKey | IDBKeyRange,
 ): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
@@ -155,9 +147,7 @@ function iterateRecords<T>(
 			cursor.continue();
 		};
 		request.onerror = () =>
-			reject(
-				request.error ?? new Error("IndexedDB cursor iteration failed."),
-			);
+			reject(request.error ?? new Error("IndexedDB cursor iteration failed."));
 	});
 }
 
@@ -184,6 +174,25 @@ function applyMigrations(
 		});
 	}
 }
+
+export type StorageGatewayPort = {
+	open(): Promise<IDBDatabase>;
+	close(): Promise<void>;
+	getAll(): Promise<StoredVectorRecord[]>;
+	iterateAll<T>(
+		callback: (record: T) => Promise<boolean | undefined> | boolean | undefined,
+	): Promise<void>;
+	queryByContentHash(
+		contentHashes: string[],
+		contents: string[],
+		predicate: (record: StoredVectorRecord, index: number) => boolean,
+	): Promise<Array<StoredVectorRecord | null>>;
+	count(): Promise<number>;
+	put(records: StoredVectorRecord[]): Promise<void>;
+	clear(): Promise<void>;
+};
+
+export type IndexedDbStoreGatewayPort = StorageGatewayPort;
 
 export type IndexedDbStoreGatewayArgs = {
 	dbName?: string;
@@ -276,14 +285,11 @@ export class IndexedDbStoreGateway {
 	}
 
 	async iterateAll<T>(
-		callback: (record: T) => Promise<boolean | void> | boolean | void,
+		callback: (record: T) => Promise<boolean | undefined> | boolean | undefined,
 	): Promise<void> {
 		const database = await this.open();
 		const transaction = database.transaction(this.#storeName, "readonly");
-		await iterateRecords<T>(
-			transaction.objectStore(this.#storeName),
-			callback,
-		);
+		await iterateRecords<T>(transaction.objectStore(this.#storeName), callback);
 		await transactionDone(transaction);
 	}
 

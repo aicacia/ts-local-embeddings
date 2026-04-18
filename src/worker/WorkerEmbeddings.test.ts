@@ -1,5 +1,5 @@
 import test from "tape";
-import { setDebugLogging } from "./debug.js";
+import { setDebugLogging } from "../debug.js";
 import { WorkerEmbeddings } from "./WorkerEmbeddings.js";
 import type {
 	WorkerRequest,

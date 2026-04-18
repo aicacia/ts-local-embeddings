@@ -5,9 +5,10 @@ import type {
 	WorkerResponse,
 	WorkerSuccessResponse,
 } from "./embeddingWorkerProtocol.js";
+import type { WorkerPort } from "./workerPort.js";
 import { WorkerChannel } from "./workerChannel.js";
 
-class FakeWorker {
+class FakeWorker implements WorkerPort {
 	onmessage: ((event: MessageEvent<WorkerResponse>) => void) | null = null;
 	onerror: ((event: ErrorEvent) => void) | null = null;
 	onmessageerror: (() => void) | null = null;
@@ -33,7 +34,7 @@ function extractRequests(worker: FakeWorker): WorkerRequest[] {
 
 test("WorkerChannel resolves pending requests out of order", async (assert) => {
 	const worker = new FakeWorker();
-	const channel = new WorkerChannel(worker as unknown as Worker);
+	const channel = new WorkerChannel(worker as unknown as WorkerPort);
 
 	const initPromise = channel.sendRequest("init", {});
 	const queryPromise = channel.sendRequest("embedQuery", { document: "abc" });
@@ -64,7 +65,7 @@ test("WorkerChannel resolves pending requests out of order", async (assert) => {
 
 test("WorkerChannel ignores unknown request ids safely", async (assert) => {
 	const worker = new FakeWorker();
-	const channel = new WorkerChannel(worker as unknown as Worker);
+	const channel = new WorkerChannel(worker as unknown as WorkerPort);
 
 	const requestPromise = channel.sendRequest("embedQuery", { document: "x" });
 	const [request] = extractRequests(worker);
@@ -91,7 +92,7 @@ test("WorkerChannel ignores unknown request ids safely", async (assert) => {
 
 test("WorkerChannel rejects pending requests once on failure", async (assert) => {
 	const worker = new FakeWorker();
-	const channel = new WorkerChannel(worker as unknown as Worker);
+	const channel = new WorkerChannel(worker as unknown as WorkerPort);
 
 	const first = channel.sendRequest("embedQuery", { document: "first" });
 	const second = channel.sendRequest("embedQuery", { document: "second" });
@@ -121,7 +122,7 @@ test("WorkerChannel rejects pending requests once on failure", async (assert) =>
 
 test("WorkerChannel timeout rejects hung requests and late responses are ignored", async (assert) => {
 	const worker = new FakeWorker();
-	const channel = new WorkerChannel(worker as unknown as Worker, {
+	const channel = new WorkerChannel(worker as unknown as WorkerPort, {
 		requestTimeoutMs: 10,
 	});
 	const requestPromise = channel.sendRequest("embedQuery", {
@@ -153,7 +154,7 @@ test("WorkerChannel timeout rejects hung requests and late responses are ignored
 
 test("WorkerChannel surfaces serialized error payload metadata", async (assert) => {
 	const worker = new FakeWorker();
-	const channel = new WorkerChannel(worker as unknown as Worker);
+	const channel = new WorkerChannel(worker as unknown as WorkerPort);
 	const requestPromise = channel.sendRequest("embedQuery", {
 		document: "error",
 	});

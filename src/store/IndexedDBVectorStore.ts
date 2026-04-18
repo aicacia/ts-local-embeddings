@@ -9,13 +9,17 @@ import {
 	type StoredVectorRecord,
 	type VectorWritePipeline,
 } from "./vectorWritePipeline.js";
-import { IndexedDbStoreGateway } from "./indexedDbStoreGateway.js";
+import {
+	IndexedDbStoreGateway,
+	type StorageGatewayPort,
+} from "./indexedDbStoreGateway.js";
 
 export type IndexedDBVectorStoreFilter = (doc: Document) => boolean;
 
 export type IndexedDBVectorStoreArgs = {
 	dbName?: string;
 	storeName?: string;
+	gateway?: StorageGatewayPort;
 	similarity?: (a: number[], b: number[]) => number;
 };
 
@@ -48,7 +52,7 @@ export class IndexedDBVectorStore {
 	readonly #storeName: string;
 	readonly #similarity: (a: number[], b: number[]) => number;
 	readonly #writePipeline: VectorWritePipeline;
-	readonly #gateway: IndexedDbStoreGateway;
+	readonly #gateway: StorageGatewayPort;
 	#embeddingSpacePromise: Promise<string> | null = null;
 
 	constructor(
@@ -59,10 +63,12 @@ export class IndexedDBVectorStore {
 		this.#dbName = args.dbName ?? DEFAULT_DB_NAME;
 		this.#storeName = args.storeName ?? DEFAULT_STORE_NAME;
 		this.#similarity = args.similarity ?? cosine;
-		this.#gateway = new IndexedDbStoreGateway({
-			dbName: this.#dbName,
-			storeName: this.#storeName,
-		});
+		this.#gateway =
+			args.gateway ??
+			new IndexedDbStoreGateway({
+				dbName: this.#dbName,
+				storeName: this.#storeName,
+			});
 		this.#writePipeline = createVectorWritePipeline({
 			embeddings: this.#embeddings,
 			resolveEmbeddingSpace: () => this.#resolveEmbeddingSpace(),
@@ -252,15 +258,13 @@ export class IndexedDBVectorStore {
 			id: string;
 		}> = [];
 
-		const maybePushMatch = (
-			match: {
-				similarity: number;
-				metadata: Record<string, unknown>;
-				content: string;
-				embedding: number[];
-				id: string;
-			},
-		) => {
+		const maybePushMatch = (match: {
+			similarity: number;
+			metadata: Record<string, unknown>;
+			content: string;
+			embedding: number[];
+			id: string;
+		}) => {
 			if (topMatches.length < k) {
 				topMatches.push(match);
 				topMatches.sort((left, right) => right.similarity - left.similarity);
@@ -328,4 +332,3 @@ export class IndexedDBVectorStore {
 		return this.#embeddingSpacePromise;
 	}
 }
-

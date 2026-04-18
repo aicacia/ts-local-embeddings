@@ -4,7 +4,7 @@ import type {
 	RuntimeLoaderArgs,
 	RuntimeLoaderPort,
 } from "./runtimeLoaderPort.js";
-import { isDebugLoggingEnabled } from "./debug.js";
+import { isDebugLoggingEnabled } from "../debug.js";
 
 const DEFAULT_MODEL_ID = "onnx-community/embeddinggemma-300m-ONNX";
 const DEFAULT_MODEL_FALLBACKS: readonly EmbeddingModelFallback[] = [

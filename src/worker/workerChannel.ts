@@ -4,6 +4,7 @@ import type {
 	WorkerResponse,
 	WorkerSuccessResponse,
 } from "./embeddingWorkerProtocol.js";
+import type { WorkerPort } from "./workerPort.js";
 
 type PendingRequest = {
 	resolve: (value: WorkerSuccessResponse) => void;
@@ -16,12 +17,12 @@ export type WorkerChannelOptions = {
 };
 
 export class WorkerChannel {
-	readonly #worker: Worker;
+	readonly #worker: WorkerPort;
 	readonly #pendingRequests = new Map<number, PendingRequest>();
 	readonly #requestTimeoutMs: number | null;
 	#requestId = 0;
 
-	constructor(worker: Worker, options: WorkerChannelOptions = {}) {
+	constructor(worker: WorkerPort, options: WorkerChannelOptions = {}) {
 		this.#worker = worker;
 		this.#requestTimeoutMs =
 			typeof options.requestTimeoutMs === "number" &&
