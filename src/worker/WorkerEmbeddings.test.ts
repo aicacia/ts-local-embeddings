@@ -1,6 +1,7 @@
 import test from "tape";
 import { setDebugLogging } from "../debug.js";
 import { WorkerEmbeddings } from "./WorkerEmbeddings.js";
+import { normalizeLoadEmbeddingRuntimeOptions } from "./workerRuntimeOptions.js";
 import type {
 	WorkerRequest,
 	WorkerResponse,
@@ -193,6 +194,35 @@ test("WorkerEmbeddings supports injected workers without global Worker", async (
 	assert.end();
 });
 
+test("WorkerEmbeddings supports raw worker message data without MessageEvent wrapper", async (assert) => {
+	const worker = new FakeWorker();
+	const embeddings = new WorkerEmbeddings({
+		worker: worker as unknown as Worker,
+	});
+
+	const queryPromise = embeddings.embedQuery("hello");
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	const request = worker.latestRequest("embedQuery");
+
+	worker.onmessage?.({
+		type: "queryEmbedded",
+		requestId: request.requestId,
+		payload: {
+			embedding: [5],
+		},
+	} as unknown as MessageEvent<unknown>);
+
+	const queryEmbedding = await queryPromise;
+	assert.deepEqual(
+		queryEmbedding,
+		[5],
+		"embedQuery uses raw worker message data successfully",
+	);
+
+	embeddings.terminate();
+	assert.end();
+});
+
 test("WorkerEmbeddings recovers from transient init failures", async (assert) => {
 	const worker = new FakeWorker({ failFirstInit: true });
 	const embeddings = new WorkerEmbeddings({
@@ -259,6 +289,57 @@ test("WorkerEmbeddings propagates debug flag to worker init options", async (ass
 
 	embeddings.terminate();
 	setDebugLogging(false);
+	assert.end();
+});
+
+test("WorkerEmbeddings treats undefined and equivalent explicit runtime init options as equal", async (assert) => {
+	const defaultOptions = normalizeLoadEmbeddingRuntimeOptions(undefined);
+	const explicitEmptyOptions = normalizeLoadEmbeddingRuntimeOptions({});
+	const explicitDebugFalseOptions = normalizeLoadEmbeddingRuntimeOptions({
+		debugLogging: false,
+	});
+
+	assert.deepEqual(
+		explicitEmptyOptions,
+		defaultOptions,
+		"empty runtime options normalize to the same defaults as undefined",
+	);
+	assert.deepEqual(
+		explicitDebugFalseOptions,
+		defaultOptions,
+		"explicit debugLogging=false normalizes to the same defaults as undefined",
+	);
+	assert.notDeepEqual(
+		normalizeLoadEmbeddingRuntimeOptions({ debugLogging: true }),
+		defaultOptions,
+		"debugLogging=true differs from default runtime options",
+	);
+
+	assert.end();
+});
+
+test("WorkerEmbeddings supports repeated init requests with identical runtime options", async (assert) => {
+	const worker = new FakeWorker();
+	const embeddings = new WorkerEmbeddings({
+		worker: worker as unknown as Worker,
+		runtime: { modelId: "test-model", debugLogging: false },
+	});
+
+	await embeddings.embedQuery("hello");
+	const provenance = await embeddings.getEmbeddingProvenance();
+
+	assert.equal(
+		worker.requestCount("init"),
+		2,
+		"WorkerEmbeddings sends init again for getEmbeddingProvenance",
+	);
+	assert.equal(
+		provenance,
+		"test-model:q4",
+		"getEmbeddingProvenance returns runtime metadata after repeated init",
+	);
+
+	embeddings.terminate();
 	assert.end();
 });
 

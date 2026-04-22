@@ -9,6 +9,8 @@ import {
 	VECTOR_STORE_SCHEMA,
 } from "./indexedDbStoreGateway.js";
 import type { StoredVectorRecord } from "./vectorWritePipeline.js";
+import { createVectorWritePipeline } from "./vectorWritePipeline.js";
+import { Document } from "@langchain/core/documents";
 
 function uniqueDbName(): string {
 	return `test-db-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -164,18 +166,27 @@ test("IndexedDbStoreGateway works with getAll unavailable", async (assert) => {
 				embedding: [1, 0],
 				metadata: {},
 			},
+			{
+				id: "2",
+				content: "hello world",
+				embeddingSpace: "space-2",
+				contentHash: "h1",
+				cacheKey: "space-2:h1",
+				embedding: [0, 1],
+				metadata: {},
+			},
 		];
 
 		await gateway.put(records);
-		assert.equal(await gateway.count(), 1, "count still works without getAll");
+		assert.equal(await gateway.count(), 2, "count still works without getAll");
 
 		const all = await gateway.getAll();
-		assert.equal(all.length, 1, "fallback getAll returns all records");
+		assert.equal(all.length, 2, "fallback getAll returns all records");
 
 		const queried = await gateway.queryByContentHash(
 			["h1"],
 			["hello world"],
-			(record) => record.embeddingSpace === "space-1",
+			(record, index) => record.embeddingSpace === "space-1" && index === 0,
 		);
 		assert.equal(
 			queried[0]?.id,
@@ -239,5 +250,72 @@ test("IndexedDbStoreGateway retries open after an initial failure", async (asser
 
 	await gateway.close();
 	installFakeIndexedDb();
+	assert.end();
+});
+
+test("IndexedDbStoreGateway persists Float32Array embeddings", async (assert) => {
+	installFakeIndexedDb();
+	const dbName = uniqueDbName();
+	const gateway = new IndexedDbStoreGateway({ dbName, storeName: "vectors" });
+
+	const emb = new Float32Array([1.1, 2.2, 3.3]);
+	await gateway.put([
+		{
+			id: "f1",
+			content: "doc1",
+			embeddingSpace: "space",
+			contentHash: "hf1",
+			cacheKey: "space:hf1",
+			embedding: emb,
+			metadata: {},
+		},
+	]);
+
+	const all = await gateway.getAll();
+	assert.equal(all.length, 1, "one record persisted");
+	assert.ok(
+		all[0].embedding instanceof Float32Array,
+		"embedding is Float32Array",
+	);
+	assert.deepEqual(
+		Array.from(all[0].embedding as Float32Array),
+		Array.from(emb),
+		"values preserved",
+	);
+
+	await gateway.close();
+	assert.end();
+});
+
+test("VectorWritePipeline converts large number[] to Float32Array", async (assert) => {
+	// Use an embedding runtime that returns plain number[] vectors larger than threshold
+	const docs = [
+		new Document({ pageContent: "d1", metadata: {} }),
+		new Document({ pageContent: "d2", metadata: {} }),
+	];
+
+	const embeddingsRuntime = {
+		embedDocuments: async (inputs: string[]) =>
+			inputs.map(() => Array.from({ length: 20 }, (_, i) => i + 0.5)),
+		embedQuery: async (doc: string) => [1],
+	} as any;
+
+	const captured: any[] = [];
+	const pipeline = createVectorWritePipeline({
+		embeddings: embeddingsRuntime,
+		resolveEmbeddingSpace: async () => "space",
+		getCachedRecords: async () => docs.map(() => null),
+		putRecords: async (records) => {
+			captured.push(...records);
+		},
+	});
+
+	await pipeline.addDocuments(docs);
+	assert.equal(captured.length, docs.length, "putRecords called with records");
+	assert.ok(
+		captured[0].embedding instanceof Float32Array,
+		"embedding converted to Float32Array",
+	);
+
 	assert.end();
 });

@@ -133,10 +133,41 @@ test("embeddingPipeline handles callable and _call runtimes", async (assert) => 
 	assert.end();
 });
 
-test("embeddingPipeline rejects malformed embedding output", async (assert) => {
+test("embeddingPipeline preserves numeric output including NaN (validation removed)", async (assert) => {
 	const runtime = createRuntime({
 		modelOutputFactory: (inputs) =>
 			inputs.documents.map(() => [1, Number.NaN] as unknown as number[]),
+	});
+	const pipeline = createEmbeddingPipeline(runtime);
+
+	const result = await pipeline.embedDocuments(["one"]);
+	assert.equal(result.length, 1, "returns one embedding");
+	assert.equal(result[0][0], 1, "preserves the first vector value");
+	assert.ok(Number.isNaN(result[0][1]), "preserves NaN in embedding output");
+	assert.end();
+});
+
+test("embeddingPipeline can skip embedding validation", async (assert) => {
+	const runtime = createRuntime({
+		modelOutputFactory: (inputs) =>
+			inputs.documents.map(() => [1, Number.NaN] as unknown as number[]),
+	});
+	const pipeline = createEmbeddingPipeline(runtime);
+
+	const result = await pipeline.embedDocuments(["one"]);
+
+	assert.equal(result.length, 1, "returns one embedding");
+	assert.equal(result[0][0], 1, "preserves the first vector value");
+	assert.ok(Number.isNaN(result[0][1]), "skips validation when disabled");
+	assert.end();
+});
+
+test("embeddingPipeline still validates output shape when validation is disabled", async (assert) => {
+	const runtime = createRuntime({
+		modelOutputFactory: () => [
+			[1, 2],
+			[3, 4],
+		],
 	});
 	const pipeline = createEmbeddingPipeline(runtime);
 
@@ -146,10 +177,34 @@ test("embeddingPipeline rejects malformed embedding output", async (assert) => {
 	} catch (error) {
 		assert.ok(
 			error instanceof Error &&
-				/non-numeric embedding vector/i.test(error.message),
-			"throws for non-finite vectors",
+				/produced 2 vectors for 1 documents/i.test(error.message),
+			"throws for wrong vector count even when validation is disabled",
 		);
 	}
+
+	assert.end();
+});
+
+test("embeddingPipeline query path still validates output shape when validation is disabled", async (assert) => {
+	const runtime = createRuntime({
+		modelOutputFactory: () => [
+			[1, 2],
+			[3, 4],
+		],
+	});
+	const pipeline = createEmbeddingPipeline(runtime);
+
+	try {
+		await pipeline.embedQuery("query");
+		assert.fail("expected embedQuery to throw");
+	} catch (error) {
+		assert.ok(
+			error instanceof Error &&
+				/produced 2 vectors for 1 documents/i.test(error.message),
+			"query path still enforces one output vector per input document",
+		);
+	}
+
 	assert.end();
 });
 

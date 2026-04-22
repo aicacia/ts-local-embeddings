@@ -4,8 +4,12 @@
 /.rollup.cache/
 /docs/
 /types/
-/browser/
+/dist/
 /esm/
+/test-results/
+/.parcel-cache/
 /.nyc_output/
 /npm-debug.log
 **/*.tsbuildinfo
+lighthouse-report.html
+lighthouse-report.json

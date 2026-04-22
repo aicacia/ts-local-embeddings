@@ -6,8 +6,8 @@ import type {
 } from "./runtimeLoaderPort.js";
 import { isDebugLoggingEnabled } from "../debug.js";
 
-const DEFAULT_MODEL_ID = "onnx-community/embeddinggemma-300m-ONNX";
-const DEFAULT_MODEL_FALLBACKS: readonly EmbeddingModelFallback[] = [
+export const DEFAULT_MODEL_ID = "onnx-community/embeddinggemma-300m-ONNX";
+export const DEFAULT_MODEL_FALLBACKS: readonly EmbeddingModelFallback[] = [
 	{ dtype: "q4", model_file_name: "model_no_gather" },
 	{ dtype: "q4" },
 	{ dtype: "q8" },
@@ -33,6 +33,8 @@ export function resolveRuntimePolicy(
 	const modelId = options.modelId ?? DEFAULT_MODEL_ID;
 	const allowRemoteModels = options.allowRemoteModels ?? true;
 	const localFilesOnly = !allowRemoteModels;
+	// An explicit empty modelFallbacks array is treated as "no explicit fallback list",
+	// so the default fallback order is used when options.modelFallbacks is [] or undefined.
 	const modelFallbacks =
 		options.modelFallbacks && options.modelFallbacks.length > 0
 			? options.modelFallbacks
@@ -52,12 +54,12 @@ export function resolveRuntimePolicy(
 	};
 }
 
-export async function loadModelWithFallbacks(
+export async function loadModelWithFallbacks<ModelType = unknown>(
 	modelId: string,
 	modelFallbacks: readonly EmbeddingModelFallback[],
-	loader: RuntimeLoaderPort,
+	loader: RuntimeLoaderPort<unknown, ModelType>,
 	args: RuntimeLoaderArgs,
-): Promise<{ model: unknown; variant: string; attemptedVariants: string[] }> {
+): Promise<{ model: ModelType; variant: string; attemptedVariants: string[] }> {
 	let lastError: unknown;
 	const attemptedVariants: string[] = [];
 
@@ -98,8 +100,11 @@ export async function loadModelWithFallbacks(
 		}
 	}
 
-	throw new Error(
+	const error = new Error(
 		`Failed to initialize embedding model for ${modelId}. Tried variants: ${attemptedVariants.join(", ")}`,
-		{ cause: lastError },
 	);
+	if (lastError !== undefined) {
+		(error as Error & { cause?: unknown }).cause = lastError;
+	}
+	throw error;
 }

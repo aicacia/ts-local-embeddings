@@ -3,7 +3,7 @@
 	"files": {
 		"ignoreUnknown": true,
 		"ignore": [
-			"browser/**/*",
+			"dist/browser/**/*",
 			"coverage/**/*",
 			".nyc_output/**/*",
 			"docs/**/*",
@@ -12,5 +12,16 @@
 			"node_modules/**/*",
 			"types/**/*"
 		]
+	},
+	"linter": {
+		"rules": {
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noControlCharactersInRegex": "off"
+			},
+			"style": {
+				"useConst": "off"
+			}
+		}
 	}
 }

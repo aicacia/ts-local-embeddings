@@ -82,10 +82,20 @@ export class WorkerChannel {
 	}
 
 	handleFailure(message: string): void {
-		const requestIds = Array.from(this.#pendingRequests.keys());
-		for (const requestId of requestIds) {
-			const pending = this.#clearPendingRequest(requestId);
-			pending?.reject(new Error(message));
+		// Iterate over pending requests directly to avoid allocating a temporary
+		// array of keys (reduces GC pressure during failure scenarios).
+		for (const [requestId, pending] of this.#pendingRequests) {
+			// Remove entry and clear timeout without calling the helper to avoid
+			// extra lookups/allocations.
+			this.#pendingRequests.delete(requestId);
+			if (pending.timeoutHandle !== null) {
+				clearTimeout(pending.timeoutHandle);
+			}
+			try {
+				pending.reject(new Error(message));
+			} catch (_err) {
+				// swallow per-request rejection errors
+			}
 		}
 	}
 

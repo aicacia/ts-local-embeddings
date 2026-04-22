@@ -30,7 +30,10 @@ export type { LoadEmbeddingRuntimeOptions } from "./runtimeLoaderPort.js";
 
 export async function loadEmbeddingRuntime(
 	options: LoadEmbeddingRuntimeOptions = {},
-	loader: RuntimeLoaderPort = new HuggingFaceRuntimeLoader(),
+	loader: RuntimeLoaderPort<
+		TokenizerInstance,
+		ModelInstance
+	> = new HuggingFaceRuntimeLoader(),
 ): Promise<EmbeddingRuntime> {
 	const policy = resolveRuntimePolicy(options);
 
@@ -51,7 +54,7 @@ export async function loadEmbeddingRuntime(
 	return {
 		modelId: policy.modelId,
 		variant,
-		tokenizer: tokenizer as TokenizerInstance,
-		model: model as ModelInstance,
+		tokenizer,
+		model,
 	};
 }

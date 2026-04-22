@@ -13,12 +13,30 @@ import {
 	isWorkerResponse,
 } from "./embeddingWorkerProtocol.js";
 import { WorkerChannel } from "./workerChannel.js";
+import { packRowsToFloat32 } from "../utils/typedArrayUtils.js";
+
+function isMessageEvent(value: unknown): value is MessageEvent<unknown> {
+	return typeof value === "object" && value !== null && "data" in value;
+}
+
+function getWorkerMessageData(event: unknown): unknown {
+	if (isMessageEvent(event)) {
+		return event.data;
+	}
+
+	return event;
+}
 
 export type WorkerEmbeddingsOptions = {
 	runtime?: LoadEmbeddingRuntimeOptions;
 	worker?: WorkerPort;
 	requestTimeoutMs?: number;
 	onProgress?: (progress: WorkerResponseMap["progress"]) => void;
+	/**
+	 * Request raw transferred embedding buffers instead of nested arrays.
+	 * Use `embedDocumentsRaw` to retrieve the raw buffer when available.
+	 */
+	returnRawBuffer?: boolean;
 };
 
 type WorkerResponsePayloadByType = {
@@ -30,11 +48,13 @@ type WorkerResponsePayloadByType = {
 
 type WorkerResultByRequestType = {
 	init: WorkerResponsePayloadByType["ready"]["runtime"];
-	embedDocuments: WorkerResponsePayloadByType["documentsEmbedded"]["embeddings"];
-	embedQuery: WorkerResponsePayloadByType["queryEmbedded"]["embedding"];
+	embedDocuments: Array<number[] | Float32Array>;
+	embedQuery: number[] | Float32Array;
 };
 
-export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
+export class WorkerEmbeddings
+	implements EmbeddingsInterface<number[] | Float32Array>
+{
 	readonly #worker: WorkerPort;
 	readonly #channel: WorkerChannel;
 	#initialization: Promise<void> | null;
@@ -79,17 +99,22 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 				return;
 			}
 
-			if (!isWorkerResponse(event.data)) {
-				this.#handleWorkerFailure("Embedding worker sent an invalid response.");
+			const message = getWorkerMessageData(event);
+			if (!isWorkerResponse(message)) {
+				if (isMessageEvent(event)) {
+					this.#handleWorkerFailure(
+						(event.data as { payload: SerializedError }).payload.message,
+					);
+				}
 				return;
 			}
 
-			if (event.data.type === "progress") {
-				this.#onProgress?.(event.data.payload);
+			if (message.type === "progress") {
+				this.#onProgress?.(message.payload);
 				return;
 			}
 
-			this.#channel.handleResponse(event.data);
+			this.#channel.handleResponse(message);
 		};
 
 		this.#worker.onerror = (event): void => {
@@ -124,7 +149,9 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 		this.#worker.terminate();
 	}
 
-	async embedDocuments(documents: string[]): Promise<number[][]> {
+	async embedDocuments(
+		documents: string[],
+	): Promise<Array<number[] | Float32Array>> {
 		return this.#enqueueDocumentRequest(async () => {
 			await this.#ensureInitialized();
 			const embeddings = await this.#request("embedDocuments", { documents });
@@ -132,7 +159,51 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 		});
 	}
 
-	async embedQuery(document: string): Promise<number[]> {
+	/**
+	 * Quick path: return transferred Float32Array buffer (rows/dims) when the
+	 * worker provides it. This avoids materializing large nested `number[][]`
+	 * allocations on the main thread.
+	 */
+	async embedDocumentsRaw(documents: string[]): Promise<{
+		buffer: ArrayBuffer;
+		rows: number;
+		dims: number;
+	}> {
+		return this.#enqueueDocumentRequest(async () => {
+			await this.#ensureInitialized();
+			// Use channel directly to avoid the default mapping that converts
+			// transferred buffers into nested arrays.
+			const response = await this.#channel.sendRequest("embedDocuments", {
+				documents,
+			});
+
+			if (response.type !== "documentsEmbedded") {
+				throw new Error(
+					`Embedding worker returned ${response.type} for embedDocuments request.`,
+				);
+			}
+
+			const payload =
+				response.payload as WorkerResponseMap["documentsEmbedded"];
+
+			if (payload.embeddingsBuffer?.buffer) {
+				const { buffer, rows, dims } = payload.embeddingsBuffer;
+				return { buffer: buffer as ArrayBuffer, rows, dims };
+			}
+
+			// Fallback: convert legacy nested arrays into a packed Float32Array
+			if (Array.isArray(payload.embeddings)) {
+				const packed = packRowsToFloat32(
+					payload.embeddings as ArrayLike<number>[],
+				);
+				return { buffer: packed.buffer, rows: packed.rows, dims: packed.dims };
+			}
+
+			return { buffer: new ArrayBuffer(0), rows: 0, dims: 0 };
+		});
+	}
+
+	async embedQuery(document: string): Promise<number[] | Float32Array> {
 		await this.#ensureInitialized();
 		const embedding = await this.#request("embedQuery", { document });
 		return embedding;
@@ -231,20 +302,58 @@ export class WorkerEmbeddings implements EmbeddingsInterface<number[]> {
 					);
 				}
 				return response.payload.runtime as WorkerResultByRequestType[T];
-			case "embedDocuments":
+			case "embedDocuments": {
 				if (response.type !== "documentsEmbedded") {
 					throw new Error(
 						`Embedding worker returned ${response.type} for embedDocuments request.`,
 					);
 				}
-				return response.payload.embeddings as WorkerResultByRequestType[T];
-			case "embedQuery":
+				// Support both legacy nested arrays and transferred Float32Array buffers.
+				// If a transferred buffer is present, reshape it into number[][].
+				const payload =
+					response.payload as WorkerResponseMap["documentsEmbedded"];
+				if (Array.isArray(payload.embeddings)) {
+					return payload.embeddings as WorkerResultByRequestType[T];
+				}
+
+				if (payload.embeddingsBuffer?.buffer) {
+					const { buffer, rows, dims } = payload.embeddingsBuffer;
+					const float32 = new Float32Array(buffer as ArrayBuffer);
+					const out: Array<number[] | Float32Array> = new Array(rows);
+					for (let r = 0; r < rows; r++) {
+						const start = r * dims;
+						// Use `subarray` to avoid copying when possible; this returns a
+						// Float32Array view into the transferred buffer.
+						out[r] = float32.subarray(start, start + dims);
+					}
+					return out as WorkerResultByRequestType[T];
+				}
+
+				// Fallback: empty array
+				return [] as unknown as WorkerResultByRequestType[T];
+			}
+			case "embedQuery": {
 				if (response.type !== "queryEmbedded") {
 					throw new Error(
 						`Embedding worker returned ${response.type} for embedQuery request.`,
 					);
 				}
-				return response.payload.embedding as WorkerResultByRequestType[T];
+				// Support transferred Float32Array for single embeddings as well.
+				const queryPayload =
+					response.payload as WorkerResponseMap["queryEmbedded"];
+				if (Array.isArray(queryPayload.embedding)) {
+					return queryPayload.embedding as WorkerResultByRequestType[T];
+				}
+
+				if (queryPayload.embeddingBuffer?.buffer) {
+					const { buffer, dims } = queryPayload.embeddingBuffer;
+					const float32 = new Float32Array(buffer as ArrayBuffer);
+					// Return a view into the buffer to avoid copying.
+					return float32.subarray(0, dims) as WorkerResultByRequestType[T];
+				}
+
+				return [] as unknown as WorkerResultByRequestType[T];
+			}
 		}
 	}
 

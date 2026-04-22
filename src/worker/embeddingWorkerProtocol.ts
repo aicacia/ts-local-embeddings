@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type {
 	EmbeddingRuntime,
 	LoadEmbeddingRuntimeOptions,
@@ -49,10 +50,21 @@ export type WorkerResponseMap = {
 		event: EmbeddingPipelineEvent;
 	};
 	documentsEmbedded: {
-		embeddings: number[][];
+		// Either a nested number array (legacy) or a transferable Float32Array
+		// buffer with shape metadata for efficient transfer from worker -> main.
+		embeddings?: number[][];
+		embeddingsBuffer?: {
+			buffer: ArrayBuffer;
+			rows: number;
+			dims: number;
+		};
 	};
 	queryEmbedded: {
-		embedding: number[];
+		embedding?: number[];
+		embeddingBuffer?: {
+			buffer: ArrayBuffer;
+			dims: number;
+		};
 	};
 	error: SerializedError;
 };
@@ -64,10 +76,25 @@ export type WorkerResponse = {
 		type: K;
 		requestId: number;
 		payload: WorkerResponseMap[K];
+		/** @internal Helper for worker to provide transferable ArrayBuffers */
+		_transfer?: ArrayBuffer[];
 	};
 }[WorkerResponseType];
 
 export type WorkerSuccessResponse = Exclude<WorkerResponse, { type: "error" }>;
+
+/**
+ * WorkerResponse with an optional internal `_transfer` helper for
+ * attaching transferable ArrayBuffer(s) when posting from the worker.
+ *
+ * This is intended for worker-internal use; the extra field is optional
+ * and does not change the existing `WorkerResponse` shape.
+ *
+ * @internal
+ */
+export type WorkerResponseWithTransfer = WorkerResponse & {
+	_transfer?: ArrayBuffer[];
+};
 
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -164,6 +191,32 @@ export function isWorkerRequest(value: unknown): value is WorkerRequest {
 	}
 }
 
+function isFiniteNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value);
+}
+
+function isBatchDecisionEvent(
+	value: unknown,
+): value is Extract<EmbeddingPipelineEvent, { type: "batch" }> {
+	if (!isObject(value) || value.type !== "batch") {
+		return false;
+	}
+
+	return (
+		isFiniteNumber((value as Record<string, unknown>).batchNumber) &&
+		isFiniteNumber((value as Record<string, unknown>).batchDocuments) &&
+		isFiniteNumber((value as Record<string, unknown>).batchTokens) &&
+		isFiniteNumber((value as Record<string, unknown>).processedAfterBatch) &&
+		isFiniteNumber((value as Record<string, unknown>).totalDocuments)
+	);
+}
+
+function isEmbeddingPipelineEvent(
+	value: unknown,
+): value is EmbeddingPipelineEvent {
+	return isBatchDecisionEvent(value);
+}
+
 function isReadyPayload(value: unknown): value is WorkerResponseMap["ready"] {
 	return (
 		isObject(value) &&
@@ -176,55 +229,78 @@ function isReadyPayload(value: unknown): value is WorkerResponseMap["ready"] {
 function isProgressPayload(
 	value: unknown,
 ): value is WorkerResponseMap["progress"] {
-	if (!isObject(value) || value.requestType !== "embedDocuments") {
-		return false;
-	}
-
-	if (!isObject(value.event) || value.event.type !== "batch") {
-		return false;
-	}
-
-	const event = value.event as Record<string, unknown>;
 	return (
-		typeof event.batchNumber === "number" &&
-		Number.isFinite(event.batchNumber) &&
-		typeof event.batchDocuments === "number" &&
-		Number.isFinite(event.batchDocuments) &&
-		typeof event.batchTokens === "number" &&
-		Number.isFinite(event.batchTokens) &&
-		typeof event.processedAfterBatch === "number" &&
-		Number.isFinite(event.processedAfterBatch) &&
-		typeof event.totalDocuments === "number" &&
-		Number.isFinite(event.totalDocuments)
+		isObject(value) &&
+		value.requestType === "embedDocuments" &&
+		isEmbeddingPipelineEvent(value.event)
 	);
 }
 
 function isDocumentsEmbeddedPayload(
 	value: unknown,
 ): value is WorkerResponseMap["documentsEmbedded"] {
-	return (
-		isObject(value) &&
-		Array.isArray(value.embeddings) &&
-		value.embeddings.every(
-			(vector) =>
+	if (!isObject(value)) return false;
+
+	// Legacy: nested number[][]
+	if (
+		Array.isArray((value as any).embeddings) &&
+		(value as any).embeddings.every(
+			(vector: unknown) =>
 				Array.isArray(vector) &&
-				vector.every(
-					(entry) => typeof entry === "number" && Number.isFinite(entry),
-				),
+				vector.every((entry) => typeof entry === "number"),
 		)
-	);
+	) {
+		return true;
+	}
+
+	// Transferable buffer form: { embeddingsBuffer: { buffer, rows, dims } }
+	if (isObject((value as any).embeddingsBuffer)) {
+		const b = (value as any).embeddingsBuffer;
+		if (
+			typeof b.rows === "number" &&
+			Number.isFinite(b.rows) &&
+			b.rows >= 0 &&
+			typeof b.dims === "number" &&
+			Number.isFinite(b.dims) &&
+			b.dims > 0 &&
+			isObject(b.buffer) &&
+			typeof (b.buffer as any).byteLength === "number"
+		) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 function isQueryEmbeddedPayload(
 	value: unknown,
 ): value is WorkerResponseMap["queryEmbedded"] {
-	return (
-		isObject(value) &&
-		Array.isArray(value.embedding) &&
-		value.embedding.every(
-			(entry) => typeof entry === "number" && Number.isFinite(entry),
+	if (!isObject(value)) return false;
+
+	if (
+		Array.isArray((value as any).embedding) &&
+		(value as any).embedding.every(
+			(entry: unknown) => typeof entry === "number",
 		)
-	);
+	) {
+		return true;
+	}
+
+	if (isObject((value as any).embeddingBuffer)) {
+		const b = (value as any).embeddingBuffer;
+		if (
+			typeof b.dims === "number" &&
+			Number.isFinite(b.dims) &&
+			b.dims > 0 &&
+			isObject(b.buffer) &&
+			typeof (b.buffer as any).byteLength === "number"
+		) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 export function isWorkerResponse(value: unknown): value is WorkerResponse {

@@ -16,11 +16,17 @@ export type RuntimeLoaderArgs = {
 	pretrainedOptions: Record<string, unknown>;
 };
 
-export interface RuntimeLoaderPort {
-	loadTokenizer(modelId: string, args: RuntimeLoaderArgs): Promise<unknown>;
+export interface RuntimeLoaderPort<
+	TokenizerType = unknown,
+	ModelType = unknown,
+> {
+	loadTokenizer(
+		modelId: string,
+		args: RuntimeLoaderArgs,
+	): Promise<TokenizerType>;
 	loadModel(
 		modelId: string,
 		fallback: EmbeddingModelFallback,
 		args: RuntimeLoaderArgs,
-	): Promise<unknown>;
+	): Promise<ModelType>;
 }

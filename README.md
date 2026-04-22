@@ -24,23 +24,28 @@ pnpm add @aicacia/local-embeddings @huggingface/transformers @langchain/core
 ## Quick start (Web Worker + IndexedDB)
 
 ```ts
-import { IndexedDBVectorStore, WorkerEmbeddings } from '@aicacia/local-embeddings';
-import { Document } from '@langchain/core/documents';
+import {
+  IndexedDBVectorStore,
+  WorkerEmbeddings,
+} from "@aicacia/local-embeddings";
+import { Document } from "@langchain/core/documents";
 
 const embeddings = new WorkerEmbeddings({
-	runtime: {
-		modelPath: '/models/'
-	}
+  runtime: {
+    modelPath: "/models/",
+  },
 });
 
 const store = new IndexedDBVectorStore(embeddings);
 
 await store.addDocuments([
-	new Document({ pageContent: 'TypeScript is strongly typed JavaScript' }),
-	new Document({ pageContent: 'Transformers can run in the browser with ONNX' })
+  new Document({ pageContent: "TypeScript is strongly typed JavaScript" }),
+  new Document({
+    pageContent: "Transformers can run in the browser with ONNX",
+  }),
 ]);
 
-const matches = await store.similaritySearchWithScore('browser embeddings', 3);
+const matches = await store.similaritySearchWithScore("browser embeddings", 3);
 console.log(matches);
 ```
 
@@ -66,20 +71,22 @@ embeddings.terminate();
 To enable internal debug logs while diagnosing runtime/model loading issues, set:
 
 ```ts
-(globalThis as { __LOCAL_EMBEDDINGS_DEBUG__?: boolean }).__LOCAL_EMBEDDINGS_DEBUG__ = true;
+(
+  globalThis as { __LOCAL_EMBEDDINGS_DEBUG__?: boolean }
+).__LOCAL_EMBEDDINGS_DEBUG__ = true;
 ```
 
 Example `modelFallbacks`:
 
 ```ts
 const embeddings = new WorkerEmbeddings({
-	runtime: {
-		modelFallbacks: [
-			{ dtype: 'q4', model_file_name: 'model_no_gather' },
-			{ dtype: 'q4' },
-			{ dtype: 'fp16' }
-		]
-	}
+  runtime: {
+    modelFallbacks: [
+      { dtype: "q4", model_file_name: "model_no_gather" },
+      { dtype: "q4" },
+      { dtype: "fp16" },
+    ],
+  },
 });
 ```
 
@@ -111,4 +118,11 @@ pnpm build
 pnpm lint
 pnpm coverage
 pnpm github-pages:dev
+```
+
+For running the browser benchmark locally, build the browser assets first:
+
+```bash
+pnpm run build:browser
+pnpm run benchmark:browser
 ```

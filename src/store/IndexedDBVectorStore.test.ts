@@ -65,6 +65,28 @@ test("IndexedDBVectorStore accepts injected gateway instance", async (assert) =>
 	assert.end();
 });
 
+test("IndexedDBVectorStore rejects custom gateway with explicit dbName or storeName", async (assert) => {
+	installFakeIndexedDb();
+	const gateway = new IndexedDbStoreGateway({
+		dbName: uniqueDbName(),
+		storeName: "vectors",
+	});
+	try {
+		new IndexedDBVectorStore(embeddings, {
+			gateway,
+			dbName: uniqueDbName(),
+		});
+		assert.fail("expected error when mixing gateway with dbName");
+	} catch (error) {
+		assert.ok(
+			error instanceof Error && /dbName|storeName/i.test(error.message),
+			"throws when gateway is mixed with explicit dbName or storeName",
+		);
+	}
+
+	assert.end();
+});
+
 test("IndexedDBVectorStore works with a pure mocked gateway", async (assert) => {
 	const storedRecords: Array<{
 		id: string;
@@ -110,6 +132,48 @@ test("IndexedDBVectorStore works with a pure mocked gateway", async (assert) => 
 	assert.equal(results.length, 1, "returns one result from mocked gateway");
 	assert.equal(results[0]?.pageContent, "aaa", "returns nearest document");
 	assert.equal(await store.count(), 2, "count queries mocked gateway state");
+
+	await store.close();
+	assert.end();
+});
+
+test("IndexedDBVectorStore rejects similarity search when embedding dimensions mismatch", async (assert) => {
+	const gateway: StorageGatewayPort = {
+		open: async () => {
+			throw new Error("open should not be called for mock gateway");
+		},
+		close: async () => undefined,
+		getAll: async () => [
+			{
+				id: "1",
+				content: "hello",
+				embedding: [1, 2],
+				metadata: {},
+			},
+		],
+		iterateAll: async () => undefined,
+		queryByContentHash: async () => [null],
+		count: async () => 1,
+		put: async () => undefined,
+		clear: async () => undefined,
+	};
+	const store = new IndexedDBVectorStore(
+		{
+			embedDocuments: async () => [[0]],
+			embedQuery: async () => [0],
+		},
+		{ gateway },
+	);
+
+	try {
+		await store.similaritySearch("hello", 1);
+		assert.fail("expected error for mismatched embedding dimensions");
+	} catch (error) {
+		assert.ok(
+			error instanceof Error && /equal length/i.test(error.message),
+			"throws when vectors have different lengths",
+		);
+	}
 
 	await store.close();
 	assert.end();

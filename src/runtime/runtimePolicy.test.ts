@@ -1,5 +1,7 @@
 import test from "tape";
 import {
+	DEFAULT_MODEL_FALLBACKS,
+	DEFAULT_MODEL_ID,
 	loadModelWithFallbacks,
 	resolveRuntimePolicy,
 } from "./runtimePolicy.js";
@@ -22,6 +24,18 @@ test("resolveRuntimePolicy uses defaults when options are empty", (assert) => {
 		"remote models enabled by default",
 	);
 	assert.ok(resolved.modelFallbacks.length > 0, "defaults model fallback list");
+	assert.end();
+});
+
+test("resolveRuntimePolicy uses defaults when modelFallbacks is empty array", (assert) => {
+	const resolved = resolveRuntimePolicy({ modelFallbacks: [] });
+
+	assert.equal(resolved.modelId, DEFAULT_MODEL_ID, "keeps default model id");
+	assert.deepEqual(
+		resolved.modelFallbacks,
+		DEFAULT_MODEL_FALLBACKS,
+		"uses default fallback list when array is empty",
+	);
 	assert.end();
 });
 

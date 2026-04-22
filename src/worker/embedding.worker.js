@@ -1,0 +1,1 @@
+import "./embedding.worker.ts";

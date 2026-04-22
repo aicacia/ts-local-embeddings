@@ -153,6 +153,11 @@ test("vectorWritePipeline addVectors reports unique dedup groups", async (assert
 		"dedupGroupCount reports unique groups",
 	);
 	assert.equal(
+		result.reusedEmbeddingCount,
+		0,
+		"addVectors reports zero reused embeddings",
+	);
+	assert.equal(
 		writes.length,
 		3,
 		"all records are still written for addVectors",
@@ -197,7 +202,11 @@ test("vectorWritePipeline reuses cached embeddings by content hash and space", a
 	]);
 
 	assert.equal(embedCalls, 1, "only non-cached documents are embedded");
-	assert.deepEqual(writes[0]?.embedding, [42], "cached embedding is reused");
+	assert.deepEqual(
+		(writes[0]?.embedding as Float32Array)[0],
+		42,
+		"cached embedding is reused",
+	);
 	assert.equal(result.reusedEmbeddingCount, 1, "summary reports reuse count");
 	assert.end();
 });

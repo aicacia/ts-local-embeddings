@@ -24,5 +24,6 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - run: npm install -g pnpm@10
       - run: pnpm install
+      - run: pnpm run build
       - run: pnpm ci:lint && pnpm ci:format:check
       - run: pnpm coverage
