@@ -6,12 +6,7 @@ import {
 	type StoredVectorRecord,
 } from "./vectorWritePipeline.js";
 
-function createDocument(
-	pageContent: string,
-	metadata: Record<string, unknown> = {},
-) {
-	return new Document({ pageContent, metadata });
-}
+import { createDocument } from "../utils/documentUtils.js";
 
 test("vectorWritePipeline dedups groups and fans out a single embedding", async (assert) => {
 	let embedCalls = 0;

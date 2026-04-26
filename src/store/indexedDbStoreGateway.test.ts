@@ -1,87 +1,17 @@
 import test from "tape";
 import {
-	IDBIndex as FakeIDBIndex,
-	IDBObjectStore as FakeIDBObjectStore,
-	indexedDB as fakeIndexedDB,
-} from "fake-indexeddb";
-import {
 	IndexedDbStoreGateway,
 	VECTOR_STORE_SCHEMA,
 } from "./indexedDbStoreGateway.js";
 import type { StoredVectorRecord } from "./vectorWritePipeline.js";
 import { createVectorWritePipeline } from "./vectorWritePipeline.js";
 import { Document } from "@langchain/core/documents";
-
-function uniqueDbName(): string {
-	return `test-db-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function installFakeIndexedDb(): void {
-	(globalThis as { indexedDB?: IDBFactory }).indexedDB =
-		fakeIndexedDB as unknown as IDBFactory;
-}
-
-function installFailingOpenOnceIndexedDb(): void {
-	const baseFactory = fakeIndexedDB as unknown as IDBFactory;
-	let failed = false;
-
-	(globalThis as { indexedDB?: IDBFactory }).indexedDB = {
-		...baseFactory,
-		cmp: baseFactory.cmp.bind(baseFactory),
-		deleteDatabase: baseFactory.deleteDatabase.bind(baseFactory),
-		open: (name: string, version?: number) => {
-			if (failed) {
-				return baseFactory.open(name, version);
-			}
-
-			failed = true;
-			const request = {
-				error: new Error("simulated open failure"),
-				onerror: null,
-				onsuccess: null,
-				onblocked: null,
-				onupgradeneeded: null,
-				readyState: "pending",
-				result: undefined,
-				source: null,
-				transaction: null,
-			} as unknown as IDBOpenDBRequest;
-
-			queueMicrotask(() => {
-				(
-					request as IDBOpenDBRequest & {
-						readyState: IDBRequestReadyState;
-						onerror: ((event: Event) => void) | null;
-					}
-				).readyState = "done";
-				(
-					request as IDBOpenDBRequest & {
-						onerror: ((event: Event) => void) | null;
-					}
-				).onerror?.(new Event("error"));
-			});
-
-			return request;
-		},
-	} as unknown as IDBFactory;
-}
-
-function patchMissingGetAll(): { restore: () => void } {
-	const originalObjectStoreGetAll = FakeIDBObjectStore.prototype.getAll;
-	const originalIndexGetAll = FakeIDBIndex.prototype.getAll;
-
-	// @ts-expect-error
-	FakeIDBObjectStore.prototype.getAll = undefined;
-	// @ts-expect-error
-	FakeIDBIndex.prototype.getAll = undefined;
-
-	return {
-		restore: () => {
-			FakeIDBObjectStore.prototype.getAll = originalObjectStoreGetAll;
-			FakeIDBIndex.prototype.getAll = originalIndexGetAll;
-		},
-	};
-}
+import {
+	installFakeIndexedDb,
+	installFailingOpenOnceIndexedDb,
+	patchMissingGetAll,
+	uniqueDbName,
+} from "./testUtils.js";
 
 test("IndexedDbStoreGateway open creates expected schema", async (assert) => {
 	installFakeIndexedDb();

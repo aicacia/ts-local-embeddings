@@ -1,20 +1,11 @@
 import { Document } from "@langchain/core/documents";
 import test from "tape";
-import { indexedDB as fakeIndexedDB } from "fake-indexeddb";
 import { IndexedDBVectorStore } from "./IndexedDBVectorStore.js";
 import {
 	IndexedDbStoreGateway,
 	type StorageGatewayPort,
 } from "./indexedDbStoreGateway.js";
-
-function uniqueDbName(): string {
-	return `vector-store-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function installFakeIndexedDb(): void {
-	(globalThis as { indexedDB?: IDBFactory }).indexedDB =
-		fakeIndexedDB as unknown as IDBFactory;
-}
+import { installFakeIndexedDb, uniqueDbName } from "./testUtils.js";
 
 function countChars(value: string): [number, number] {
 	const a = (value.match(/a/gi) ?? []).length;

@@ -1,25 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Suite, Deferred } from "benchmark";
-import { indexedDB as fakeIndexedDB } from "fake-indexeddb";
 import { IndexedDbStoreGateway } from "./indexedDbStoreGateway.js";
 import type { StoredVectorRecord } from "./vectorWritePipeline.js";
 import type { Constructor } from "../types.js";
-
-function installFakeIndexedDb(): void {
-	try {
-		const g = globalThis as { indexedDB?: IDBFactory };
-		if (typeof g.indexedDB === "undefined") {
-			g.indexedDB = fakeIndexedDB as unknown as IDBFactory;
-		}
-	} catch (err) {
-		// In some browsers `indexedDB` is non-writable; skip if we can't set it
-		console.warn("installFakeIndexedDb: cannot overwrite indexedDB, skipping");
-	}
-}
-
-function uniqueDbName(): string {
-	return `gateway-bench-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+import { installFakeIndexedDb, uniqueDbName } from "./testUtils.js";
 
 function createRecord(index: number): StoredVectorRecord {
 	const content = `document-${index}`;

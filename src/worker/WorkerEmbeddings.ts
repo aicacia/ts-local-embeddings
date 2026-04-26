@@ -13,19 +13,17 @@ import {
 	isWorkerResponse,
 } from "./embeddingWorkerProtocol.js";
 import { WorkerChannel } from "./workerChannel.js";
-import { packRowsToFloat32 } from "../utils/typedArrayUtils.js";
-
-function isMessageEvent(value: unknown): value is MessageEvent<unknown> {
-	return typeof value === "object" && value !== null && "data" in value;
-}
-
-function getWorkerMessageData(event: unknown): unknown {
-	if (isMessageEvent(event)) {
-		return event.data;
-	}
-
-	return event;
-}
+import {
+	getWorkerMessageData,
+	isMessageEvent,
+	mapDocumentsEmbeddedResponse,
+	mapQueryEmbeddedResponse,
+} from "./workerEmbeddingsUtils.js";
+import {
+	embedDocuments,
+	embedQuery,
+	packEmbeddings,
+} from "../utils/embeddingUtils.js";
 
 export type WorkerEmbeddingsOptions = {
 	runtime?: LoadEmbeddingRuntimeOptions;
@@ -55,6 +53,10 @@ type WorkerResultByRequestType = {
 export class WorkerEmbeddings
 	implements EmbeddingsInterface<number[] | Float32Array>
 {
+	/**
+	 * WorkerEmbeddings provides embedding generation using a Web Worker pipeline.
+	 * Implements EmbeddingsInterface for compatibility with LangChain.
+	 */
 	readonly #worker: WorkerPort;
 	readonly #channel: WorkerChannel;
 	#initialization: Promise<void> | null;
@@ -63,6 +65,10 @@ export class WorkerEmbeddings
 	readonly #onProgress: WorkerEmbeddingsOptions["onProgress"];
 	#terminated = false;
 
+	/**
+	 * Create a WorkerEmbeddings instance.
+	 * @param options - Worker and runtime options.
+	 */
 	constructor(options: WorkerEmbeddingsOptions = {}) {
 		const debugLogging = isDebugLoggingEnabled();
 		this.#runtimeOptions = options.runtime
@@ -149,13 +155,19 @@ export class WorkerEmbeddings
 		this.#worker.terminate();
 	}
 
+	/**
+	 * Embed an array of documents.
+	 * @param documents - Array of strings to embed.
+	 * @returns Array of embeddings (number[] or Float32Array).
+	 */
 	async embedDocuments(
 		documents: string[],
 	): Promise<Array<number[] | Float32Array>> {
 		return this.#enqueueDocumentRequest(async () => {
 			await this.#ensureInitialized();
-			const embeddings = await this.#request("embedDocuments", { documents });
-			return embeddings;
+			return this.#request("embedDocuments", {
+				documents,
+			});
 		});
 	}
 
@@ -163,6 +175,12 @@ export class WorkerEmbeddings
 	 * Quick path: return transferred Float32Array buffer (rows/dims) when the
 	 * worker provides it. This avoids materializing large nested `number[][]`
 	 * allocations on the main thread.
+	 */
+	/**
+	 * Return a packed ArrayBuffer with embeddings laid out row-major (rows * dims).
+	 * Uses transferred buffer from worker if available, otherwise packs nested arrays.
+	 * @param documents - Array of strings to embed.
+	 * @returns Object with buffer, rows, and dims.
 	 */
 	async embedDocumentsRaw(documents: string[]): Promise<{
 		buffer: ArrayBuffer;
@@ -193,7 +211,7 @@ export class WorkerEmbeddings
 
 			// Fallback: convert legacy nested arrays into a packed Float32Array
 			if (Array.isArray(payload.embeddings)) {
-				const packed = packRowsToFloat32(
+				const packed = packEmbeddings(
 					payload.embeddings as ArrayLike<number>[],
 				);
 				return { buffer: packed.buffer, rows: packed.rows, dims: packed.dims };
@@ -203,10 +221,14 @@ export class WorkerEmbeddings
 		});
 	}
 
+	/**
+	 * Embed a single query/document.
+	 * @param document - String to embed.
+	 * @returns Embedding (number[] or Float32Array).
+	 */
 	async embedQuery(document: string): Promise<number[] | Float32Array> {
 		await this.#ensureInitialized();
-		const embedding = await this.#request("embedQuery", { document });
-		return embedding;
+		return this.#request("embedQuery", { document });
 	}
 
 	async getEmbeddingProvenance(): Promise<string> {
@@ -303,56 +325,14 @@ export class WorkerEmbeddings
 				}
 				return response.payload.runtime as WorkerResultByRequestType[T];
 			case "embedDocuments": {
-				if (response.type !== "documentsEmbedded") {
-					throw new Error(
-						`Embedding worker returned ${response.type} for embedDocuments request.`,
-					);
-				}
-				// Support both legacy nested arrays and transferred Float32Array buffers.
-				// If a transferred buffer is present, reshape it into number[][].
-				const payload =
-					response.payload as WorkerResponseMap["documentsEmbedded"];
-				if (Array.isArray(payload.embeddings)) {
-					return payload.embeddings as WorkerResultByRequestType[T];
-				}
-
-				if (payload.embeddingsBuffer?.buffer) {
-					const { buffer, rows, dims } = payload.embeddingsBuffer;
-					const float32 = new Float32Array(buffer as ArrayBuffer);
-					const out: Array<number[] | Float32Array> = new Array(rows);
-					for (let r = 0; r < rows; r++) {
-						const start = r * dims;
-						// Use `subarray` to avoid copying when possible; this returns a
-						// Float32Array view into the transferred buffer.
-						out[r] = float32.subarray(start, start + dims);
-					}
-					return out as WorkerResultByRequestType[T];
-				}
-
-				// Fallback: empty array
-				return [] as unknown as WorkerResultByRequestType[T];
+				return mapDocumentsEmbeddedResponse(
+					response,
+				) as WorkerResultByRequestType[T];
 			}
 			case "embedQuery": {
-				if (response.type !== "queryEmbedded") {
-					throw new Error(
-						`Embedding worker returned ${response.type} for embedQuery request.`,
-					);
-				}
-				// Support transferred Float32Array for single embeddings as well.
-				const queryPayload =
-					response.payload as WorkerResponseMap["queryEmbedded"];
-				if (Array.isArray(queryPayload.embedding)) {
-					return queryPayload.embedding as WorkerResultByRequestType[T];
-				}
-
-				if (queryPayload.embeddingBuffer?.buffer) {
-					const { buffer, dims } = queryPayload.embeddingBuffer;
-					const float32 = new Float32Array(buffer as ArrayBuffer);
-					// Return a view into the buffer to avoid copying.
-					return float32.subarray(0, dims) as WorkerResultByRequestType[T];
-				}
-
-				return [] as unknown as WorkerResultByRequestType[T];
+				return mapQueryEmbeddedResponse(
+					response,
+				) as WorkerResultByRequestType[T];
 			}
 		}
 	}

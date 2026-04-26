@@ -4,6 +4,7 @@ import { WorkerEmbeddings } from "./WorkerEmbeddings.js";
 import { normalizeLoadEmbeddingRuntimeOptions } from "./workerRuntimeOptions.js";
 import type {
 	WorkerRequest,
+	WorkerRequestType,
 	WorkerResponse,
 } from "./embeddingWorkerProtocol.js";
 
@@ -22,18 +23,24 @@ class FakeWorker {
 	#initAttempts = 0;
 	#terminated = false;
 	#options: FakeWorkerOptions;
+	#requests: WorkerRequest[] = [];
+	#requestCounts = new Map<WorkerRequest["type"], number>();
 	lastInitOptions: WorkerRequest["payload"]["options"] | null = null;
-	requests: WorkerRequest[] = [];
 
 	constructor(options: FakeWorkerOptions = {}) {
 		this.#options = options;
 	}
 
 	postMessage(request: WorkerRequest): void {
-		this.requests.push(request);
 		if (this.#terminated) {
 			throw new Error("worker terminated");
 		}
+
+		this.#requests.push(request);
+		this.#requestCounts.set(
+			request.type,
+			(this.#requestCounts.get(request.type) ?? 0) + 1,
+		);
 
 		queueMicrotask(() => {
 			if (
@@ -155,19 +162,21 @@ class FakeWorker {
 		this.onmessage({ data: response } as MessageEvent<WorkerResponse>);
 	}
 
-	requestCount(type: WorkerRequest["type"]): number {
-		return this.requests.filter((request) => request.type === type).length;
-	}
-
-	latestRequest(type: WorkerRequest["type"]): WorkerRequest {
-		const request = [...this.requests]
-			.reverse()
-			.find((entry) => entry.type === type);
-		if (!request) {
-			throw new Error(`expected a ${type} request`);
+	latestRequest<T extends WorkerRequestType>(
+		type: T,
+	): Extract<WorkerRequest, { type: T }> {
+		for (let index = this.#requests.length - 1; index >= 0; index -= 1) {
+			const request = this.#requests[index];
+			if (request.type === type) {
+				return request as Extract<WorkerRequest, { type: T }>;
+			}
 		}
 
-		return request;
+		throw new Error(`No request found for type ${type}`);
+	}
+
+	requestCount(type: WorkerRequestType): number {
+		return this.#requestCounts.get(type) ?? 0;
 	}
 }
 

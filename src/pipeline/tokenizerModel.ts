@@ -43,47 +43,47 @@ function hasSentenceEmbeddingWithToList(
 	);
 }
 
-export function resolveTokenizerCall(
-	tokenizer: TokenizerInstance,
-): TokenizerCallable {
-	const maybeCallable = tokenizer as unknown as
-		| TokenizerCallable
-		| { _call?: TokenizerCallable };
-
-	if (typeof maybeCallable === "function") return maybeCallable;
-	if (typeof (maybeCallable as any)._call === "function")
-		return (maybeCallable as any)._call;
-	throw new Error("Embedding tokenizer is not callable.");
-}
-
-export function resolveModelCall(model: ModelInstance): ModelCallable {
-	const maybeCallable = model as unknown as
-		| ((modelInputs: unknown) => Promise<unknown>)
-		| { _call?: (modelInputs: unknown) => Promise<unknown> };
+function resolveCallable<T extends (...args: any[]) => any>(
+	value: unknown,
+	errorMessage: string,
+): T {
+	const maybeCallable = value as unknown as T | { _call?: T };
 
 	if (typeof maybeCallable === "function") {
-		return async (inputs: unknown) => {
-			const output = await maybeCallable(inputs);
-			if (hasSentenceEmbeddingWithToList(output))
-				return output as SentenceEmbeddingResult;
-			throw new Error(
-				"Embedding model output is missing sentence_embedding.tolist().",
-			);
-		};
+		return maybeCallable;
 	}
 
 	if (typeof (maybeCallable as any)._call === "function") {
-		return async (inputs: unknown) => {
-			const output = await (maybeCallable as any)._call(inputs);
-			if (hasSentenceEmbeddingWithToList(output))
-				return output as SentenceEmbeddingResult;
-			throw new Error(
-				"Embedding model output is missing sentence_embedding.tolist().",
-			);
-		};
+		return (maybeCallable as any)._call;
 	}
 
-	throw new Error("Embedding model is not callable.");
+	throw new Error(errorMessage);
+}
+
+export function resolveTokenizerCall(
+	tokenizer: TokenizerInstance,
+): TokenizerCallable {
+	return resolveCallable<TokenizerCallable>(
+		tokenizer,
+		"Embedding tokenizer is not callable.",
+	);
+}
+
+export function resolveModelCall(model: ModelInstance): ModelCallable {
+	const modelCall = resolveCallable<(modelInputs: unknown) => Promise<unknown>>(
+		model,
+		"Embedding model is not callable.",
+	);
+
+	return async (inputs: unknown) => {
+		const output = await modelCall(inputs);
+		if (hasSentenceEmbeddingWithToList(output)) {
+			return output as SentenceEmbeddingResult;
+		}
+		throw new Error(
+			"Embedding model output is missing sentence_embedding.tolist().",
+		);
+	};
 }
 
 export function invokeTokenizer(

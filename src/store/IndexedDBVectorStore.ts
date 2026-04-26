@@ -8,11 +8,14 @@ import {
 } from "./vectorWritePipeline.js";
 import {
 	IndexedDbStoreGateway,
-	type StorageGatewayPort,
 	VECTOR_STORE_SCHEMA,
 } from "./indexedDbStoreGateway.js";
-import { computeVectorNorm } from "./utils.js";
-import { MinHeap } from "../utils/heapUtils.js";
+import type { VectorStoreGateway } from "./VectorStoreGateway.js";
+import type { StorageGatewayPort } from "./indexedDbStoreGateway.js";
+import { computeVectorNorm, computeSimilarity } from "./vectorMathUtils.js";
+import { selectTopK } from "../utils/topKUtils.js";
+import { embedDocuments, embedQuery } from "../utils/embeddingUtils.js";
+import { createDocument, normalizeMetadata } from "../utils/documentUtils.js";
 import {
 	assertEqualLengthVectors,
 	calculateDotAndNorms,
@@ -35,13 +38,7 @@ export type IndexedDBVectorStoreArgs = {
 
 // Vector math helpers are provided by ./mathUtils.js
 
-function createDocument(record: StoredVectorRecord): Document {
-	return new Document({
-		id: record.id,
-		pageContent: record.content,
-		metadata: record.metadata,
-	});
-}
+// Use shared createDocument from documentUtils
 
 type Match = {
 	similarity: number;
@@ -62,16 +59,25 @@ type EmbeddingProvenanceSource = {
 
 const DEFAULT_EMBEDDING_SPACE = "default";
 
+/**
+ * IndexedDBVectorStore provides persistent vector storage using IndexedDB.
+ * Supports similarity search, MMR, and batch operations.
+ */
 export class IndexedDBVectorStore {
 	readonly #embeddings: EmbeddingsInterface<number[] | Float32Array>;
 	readonly #dbName: string;
 	readonly #storeName: string;
 	readonly #similarity: (a: ArrayLike<number>, b: ArrayLike<number>) => number;
 	readonly #writePipeline: VectorWritePipeline;
-	readonly #gateway: StorageGatewayPort;
+	readonly #gateway: VectorStoreGateway;
 	#embeddingSpacePromise: Promise<string> | null = null;
 	#getAllThreshold = 10000;
 
+	/**
+	 * Create an IndexedDBVectorStore instance.
+	 * @param embeddings - Embeddings interface for vectorization.
+	 * @param args - Optional configuration for DB, store, and similarity.
+	 */
 	constructor(
 		embeddings: EmbeddingsInterface<number[] | Float32Array>,
 		args: IndexedDBVectorStoreArgs = {},
@@ -111,10 +117,19 @@ export class IndexedDBVectorStore {
 				: 10000;
 	}
 
+	/**
+	 * Add an array of documents to the store.
+	 * @param documents - Documents to add.
+	 */
 	async addDocuments(documents: Document[]): Promise<void> {
 		await this.#writePipeline.addDocuments(documents);
 	}
 
+	/**
+	 * Add precomputed vectors and their documents to the store.
+	 * @param vectors - Array of vectors.
+	 * @param documents - Corresponding documents.
+	 */
 	async addVectors(vectors: number[][], documents: Document[]): Promise<void> {
 		await this.#writePipeline.addVectors(vectors, documents);
 	}
@@ -123,12 +138,19 @@ export class IndexedDBVectorStore {
 		await this.#gateway.put(records);
 	}
 
+	/**
+	 * Perform a similarity search for documents matching a query string.
+	 * @param query - Query string.
+	 * @param k - Number of top results.
+	 * @param filter - Optional filter function.
+	 * @returns Array of matching documents.
+	 */
 	async similaritySearch(
 		query: string,
 		k: number,
 		filter?: IndexedDBVectorStoreFilter,
 	): Promise<Document[]> {
-		const queryEmbedding = await this.#embeddings.embedQuery(query);
+		const queryEmbedding = await embedQuery(this.#embeddings, query);
 		const matches = await this.similaritySearchVectorWithScore(
 			queryEmbedding,
 			k,
@@ -137,12 +159,19 @@ export class IndexedDBVectorStore {
 		return matches.map(([document]) => document);
 	}
 
+	/**
+	 * Perform a similarity search and return documents with their similarity scores.
+	 * @param query - Query string.
+	 * @param k - Number of top results.
+	 * @param filter - Optional filter function.
+	 * @returns Array of [Document, score] pairs.
+	 */
 	async similaritySearchWithScore(
 		query: string,
 		k: number,
 		filter?: IndexedDBVectorStoreFilter,
 	): Promise<Array<[Document, number]>> {
-		const queryEmbedding = await this.#embeddings.embedQuery(query);
+		const queryEmbedding = await embedQuery(this.#embeddings, query);
 		return this.similaritySearchVectorWithScore(queryEmbedding, k, filter);
 	}
 
@@ -153,16 +182,17 @@ export class IndexedDBVectorStore {
 	): Promise<Array<[Document, number]>> {
 		const matches = await this.#queryVectors(query, k, filter);
 		return matches.map((match) => [
-			createDocument({
-				id: match.id,
-				content: match.content,
-				embedding: match.embedding,
-				metadata: match.metadata,
-			} as unknown as StoredVectorRecord),
+			createDocument(match.content, match.metadata, match.id),
 			match.similarity,
 		]);
 	}
 
+	/**
+	 * Perform a Maximal Marginal Relevance (MMR) search for diverse results.
+	 * @param query - Query string.
+	 * @param options - MMR options (k, fetchK, lambda, filter).
+	 * @returns Array of matching documents.
+	 */
 	async maxMarginalRelevanceSearch(
 		query: string,
 		options: {
@@ -172,7 +202,7 @@ export class IndexedDBVectorStore {
 			filter?: IndexedDBVectorStoreFilter;
 		},
 	): Promise<Document[]> {
-		const queryEmbedding = await this.#embeddings.embedQuery(query);
+		const queryEmbedding = await embedQuery(this.#embeddings, query);
 		const searches = await this.#queryVectors(
 			queryEmbedding as ArrayLike<number>,
 			options.fetchK ?? 20,
@@ -186,25 +216,33 @@ export class IndexedDBVectorStore {
 			options.lambda,
 			options.k,
 		);
-
-		return selectedIndices.map(
-			(index) =>
-				new Document({
-					metadata: searches[index].metadata,
-					pageContent: searches[index].content,
-					id: searches[index].id,
-				}),
+		return selectedIndices.map((index) =>
+			createDocument(
+				searches[index].content,
+				searches[index].metadata,
+				searches[index].id,
+			),
 		);
 	}
 
+	/**
+	 * Clear all records from the store.
+	 */
 	async clear(): Promise<void> {
 		await this.#gateway.clear();
 	}
 
+	/**
+	 * Get the number of records in the store.
+	 * @returns Number of records.
+	 */
 	async count(): Promise<number> {
 		return this.#gateway.count();
 	}
 
+	/**
+	 * Close the underlying database connection.
+	 */
 	async close(): Promise<void> {
 		await this.#gateway.close();
 	}
@@ -283,11 +321,7 @@ export class IndexedDBVectorStore {
 			id: string;
 		}>
 	> {
-		if (k <= 0) {
-			return [];
-		}
-
-		const heap = new MinHeap<Match>((a, b) => a.similarity - b.similarity);
+		if (k <= 0) return [];
 
 		const useOptimizedCosine = this.#similarity === cosineSimilarity;
 		const queryNorm = useOptimizedCosine ? computeVectorNorm(query) : 0;
@@ -296,96 +330,63 @@ export class IndexedDBVectorStore {
 			recordNorm?: number,
 		): number => {
 			if (useOptimizedCosine && typeof recordNorm === "number") {
-				if (recordNorm === 0 || queryNorm === 0) {
-					return 0;
-				}
-
+				if (recordNorm === 0 || queryNorm === 0) return 0;
 				let dot = 0;
 				for (let i = 0; i < embedding.length; i += 1) {
 					dot += (query[i] as number) * (embedding[i] as number);
 				}
-
 				const score = dot / (queryNorm * recordNorm);
 				return Number.isFinite(score) ? score : 0;
 			}
-
 			return useOptimizedCosine
 				? cosineSimilarityWithQueryNorm(query, queryNorm, embedding)
 				: this.#similarity(query, embedding);
 		};
 
-		const processRecord = (record: StoredVectorRecord): void => {
-			if (filter) {
-				const doc = new Document({
-					metadata: record.metadata,
-					pageContent: record.content,
-					id: record.id,
-				});
-				if (!filter(doc)) return;
-			}
-
-			const embedding = record.embedding as ArrayLike<number>;
-			let similarity: number;
-			const recordNorm = (record as any).embeddingNorm as number | undefined;
-			similarity = computeSimilarity(embedding, recordNorm);
-
-			if (heap.size() < k) {
-				heap.push({
-					similarity,
-					metadata: record.metadata,
-					content: record.content,
-					embedding: record.embedding as unknown as ArrayLike<number>,
-					id: record.id,
-				});
-				return;
-			}
-
-			const top = heap.peek();
-			if (top && similarity > top.similarity) {
-				heap.pop();
-				heap.push({
-					similarity,
-					metadata: record.metadata,
-					content: record.content,
-					embedding: record.embedding as unknown as ArrayLike<number>,
-					id: record.id,
-				});
-			}
-		};
-
-		// Decide whether to fetch all records or stream via cursor. Streaming
-		// avoids materializing the entire DB into memory when the store is large.
+		// Decide whether to fetch all records or stream via cursor. Streaming avoids materializing the entire DB into memory when the store is large.
+		let all: StoredVectorRecord[] = [];
 		let useStream = false;
 		try {
 			const total = await this.#gateway.count();
 			useStream = total > this.#getAllThreshold;
-		} catch (_err) {
-			// If counting fails, fall back to streaming for safety.
+		} catch {
 			useStream = true;
 		}
 
 		if (useStream) {
 			await this.#gateway.iterateAll<StoredVectorRecord>(async (record) => {
-				processRecord(record);
+				all.push(record);
 				return true;
 			});
-			return heap.toArrayDesc();
+		} else {
+			try {
+				all = await this.#gateway.getAll();
+			} catch {
+				await this.#gateway.iterateAll<StoredVectorRecord>(async (record) => {
+					all.push(record);
+					return true;
+				});
+			}
 		}
 
-		// Small store: materialize all records for faster in-memory iteration.
-		let all: StoredVectorRecord[];
-		try {
-			all = await this.#gateway.getAll();
-		} catch (_) {
-			await this.#gateway.iterateAll<StoredVectorRecord>(async (record) => {
-				processRecord(record);
-				return true;
+		const scored = all
+			.filter((record) => {
+				if (!filter) return true;
+				const doc = createDocument(record.content, record.metadata, record.id);
+				return filter(doc);
+			})
+			.map((record) => {
+				const embedding = record.embedding as ArrayLike<number>;
+				const recordNorm = (record as any).embeddingNorm as number | undefined;
+				return {
+					similarity: computeSimilarity(embedding, recordNorm),
+					metadata: record.metadata,
+					content: record.content,
+					embedding: embedding,
+					id: record.id,
+				};
 			});
-			return heap.toArrayDesc();
-		}
-
-		for (const record of all) processRecord(record);
-		return heap.toArrayDesc();
+		return selectTopK(scored, k);
 	}
 
 	#matchesEmbeddingSpace(

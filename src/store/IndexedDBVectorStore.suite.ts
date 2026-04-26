@@ -1,38 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Suite, Deferred } from "benchmark";
 import { Document } from "@langchain/core/documents";
-import { indexedDB as fakeIndexedDB } from "fake-indexeddb";
 import { IndexedDBVectorStore } from "./IndexedDBVectorStore.js";
 import type { Constructor } from "../types.js";
-
-function installFakeIndexedDb(): void {
-	try {
-		const g = globalThis as { indexedDB?: IDBFactory };
-		if (typeof g.indexedDB === "undefined") {
-			g.indexedDB = fakeIndexedDB as unknown as IDBFactory;
-		}
-	} catch (err) {
-		console.warn("installFakeIndexedDb: cannot overwrite indexedDB, skipping");
-	}
-}
-
-function uniqueDbName(): string {
-	return `vector-store-bench-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function createDocuments(
-	count: number,
-	contentPrefix = "document",
-): Document[] {
-	return Array.from(
-		{ length: count },
-		(_, index) =>
-			new Document({
-				pageContent: `${contentPrefix}-${index}-${"x".repeat(32)}`,
-				metadata: { id: index },
-			}),
-	);
-}
+import { createDocuments } from "../utils/documentUtils.js";
+import { installFakeIndexedDb, uniqueDbName } from "./testUtils.js";
 
 const embeddings = {
 	embedDocuments: async (documents: string[]) =>
@@ -45,14 +17,7 @@ export default async function register(Suite: Constructor<Suite>) {
 
 	const uniqueDocs = createDocuments(100, "unique-document");
 	const duplicateDocs = createDocuments(100, "duplicate-document");
-	const identicalDocs = Array.from(
-		{ length: 100 },
-		(_, index) =>
-			new Document({
-				pageContent: "duplicate-document",
-				metadata: { id: index },
-			}),
-	);
+	const identicalDocs = createDocuments(100, "duplicate-document");
 
 	const populatedStore = new IndexedDBVectorStore(embeddings, {
 		dbName: uniqueDbName(),

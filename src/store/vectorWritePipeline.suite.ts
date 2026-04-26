@@ -3,20 +3,7 @@ import type { Suite, Deferred } from "benchmark";
 import { Document } from "@langchain/core/documents";
 import { createVectorWritePipeline } from "./vectorWritePipeline.js";
 import type { Constructor } from "../types.js";
-
-function createDocuments(
-	count: number,
-	contentPrefix = "document",
-): Document[] {
-	return Array.from(
-		{ length: count },
-		(_, index) =>
-			new Document({
-				pageContent: `${contentPrefix}-${index}-${"x".repeat(16)}`,
-				metadata: { id: index },
-			}),
-	);
-}
+import { createDocuments } from "../utils/documentUtils.js";
 
 const embeddings = {
 	embedDocuments: async (documents: string[]) =>
