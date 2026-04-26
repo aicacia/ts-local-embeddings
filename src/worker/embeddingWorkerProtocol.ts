@@ -3,7 +3,7 @@ import type {
 	EmbeddingRuntime,
 	LoadEmbeddingRuntimeOptions,
 } from "../runtime/embeddingRuntime.js";
-import type { EmbeddingPipelineEvent } from "../pipeline/embeddingPipeline.js";
+import type { EmbeddingPipelineEvent } from "../pipeline/createEmbeddingPipeline.js";
 
 export type WorkerInitPayload = {
 	options?: LoadEmbeddingRuntimeOptions;

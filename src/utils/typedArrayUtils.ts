@@ -28,8 +28,8 @@ export function arrayLikeToFloat32(
 		}
 	}
 
-	// Array-like (e.g. number[]). Float32Array.from handles array-like inputs.
-	return Float32Array.from(value as Iterable<number>);
+	// Array-like (e.g. number[]). Coerce via unknown to satisfy TSIterable typing.
+	return Float32Array.from(value as unknown as Iterable<number>);
 }
 
 export function packRowsToFloat32(
@@ -81,7 +81,9 @@ export function packRowsToFloat32(
 		// Fast path for typed-array views: use set() where possible.
 		const flat = new Float32Array(rowCount * outDims);
 		for (let r = 0; r < rowCount; r++) {
-			const view = arrayLikeToFloat32(rows[r] as ArrayBufferView);
+			const view = arrayLikeToFloat32(
+				rows[r] as ArrayLike<number> | ArrayBufferView,
+			);
 			if (view.length === outDims) {
 				flat.set(view, r * outDims);
 				continue;

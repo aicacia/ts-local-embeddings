@@ -345,7 +345,7 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 						(view as any).byteOffset === 0 &&
 						view.buffer.byteLength === dims * 4
 					) {
-						transferBuffer = view.buffer;
+						transferBuffer = view.buffer as ArrayBuffer;
 					} else {
 						// ensure we transfer a compact buffer matching dims
 						const copy = new Float32Array(view);

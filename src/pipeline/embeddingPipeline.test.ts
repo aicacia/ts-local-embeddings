@@ -1,9 +1,7 @@
 import test from "tape";
-import {
-	createEmbeddingPipeline,
-	estimateDocumentTokenLength,
-	type EmbeddingPipelineEvent,
-} from "./embeddingPipeline.js";
+import { createEmbeddingPipeline } from "./createEmbeddingPipeline.js";
+import { estimateDocumentTokenLength } from "./batching.js";
+import type { EmbeddingPipelineEvent } from "./createEmbeddingPipeline.js";
 
 type TestTokenizer = (
 	documents: string[],

@@ -5,14 +5,14 @@ import {
 	type EmbeddingPipeline,
 	type EmbeddingPipelineHooks,
 	type LocalEmbeddingsRuntime,
-} from "./embeddingPipeline.js";
+} from "./createEmbeddingPipeline.js";
 import { packRowsToFloat32 } from "../utils/typedArrayUtils.js";
 
-export type { LocalEmbeddingsRuntime } from "./embeddingPipeline.js";
+export type { LocalEmbeddingsRuntime } from "./createEmbeddingPipeline.js";
 export type {
 	EmbeddingPipelineEvent,
 	EmbeddingPipelineHooks,
-} from "./embeddingPipeline.js";
+} from "./createEmbeddingPipeline.js";
 
 export class LocalEmbeddings
 	implements EmbeddingsInterface<number[] | Float32Array>
