@@ -1,5 +1,11 @@
 import type { StoredVectorRecord } from "./vectorWritePipeline.js";
 import { serializeEmbeddingForTransfer } from "../serialization/transfer.js";
+import {
+	buildIndexedDbWriteWorkerSource,
+	createDefaultIndexedDbWriteWorkerFactory,
+	type IndexedDbWriteWorkerFactory,
+	type IndexedDbWriteWorkerPort,
+} from "./indexedDbWriteWorker.js";
 
 export const VECTOR_STORE_SCHEMA = {
 	defaultDbName: "langchain-indexeddb-vectorstore",
@@ -300,6 +306,7 @@ export type IndexedDbStoreGatewayArgs = {
 	// When true, allow transferring the original ArrayBuffer from the
 	// caller to the worker when it is safe (may detach source buffers).
 	transferOwnership?: boolean;
+	workerFactory?: IndexedDbWriteWorkerFactory;
 	// Threshold (in elements) above which numeric arrays / typed arrays
 	// will be converted to `Float32Array` and transferred to the write
 	// worker. Smaller vectors remain as `number[]` to avoid copy overhead.
@@ -324,13 +331,11 @@ export class IndexedDbStoreGateway {
 	}> = [];
 	#flushScheduled = false;
 	// Optional dedicated worker for performing IndexedDB writes off the main
-	// thread. Created lazily when first needed and when Worker/IndexedDB are
-	// available in the environment.
-	#useWriteWorker =
-		typeof Worker !== "undefined" &&
-		typeof indexedDB !== "undefined" &&
-		typeof URL !== "undefined";
-	#worker: any | null = null;
+	// thread. Created lazily when first needed and when IndexedDB is available
+	// and either the runtime provides Worker support or a custom worker factory
+	// is injected.
+	#useWriteWorker = false;
+	#worker: IndexedDbWriteWorkerPort | null = null;
 	#workerMsgId = 0;
 	#pendingWorkerResponses: Map<
 		number,
@@ -344,6 +349,7 @@ export class IndexedDbStoreGateway {
 			}>;
 		}
 	> = new Map();
+	#workerFactory: IndexedDbWriteWorkerFactory;
 	// New configurable behavior
 	#transferOwnership = true;
 	#typedArrayTransferThreshold = 16;
@@ -359,6 +365,16 @@ export class IndexedDbStoreGateway {
 				? Math.max(1, Math.floor(args.typedArrayTransferThreshold))
 				: 16;
 		this.#persistEmbeddingAs = args.persistEmbeddingAs ?? "auto";
+		this.#workerFactory =
+			typeof args.workerFactory === "function"
+				? args.workerFactory
+				: createDefaultIndexedDbWriteWorkerFactory;
+		this.#useWriteWorker =
+			typeof indexedDB !== "undefined" &&
+			(typeof args.workerFactory === "function" ||
+				(typeof Worker !== "undefined" &&
+					typeof Blob !== "undefined" &&
+					typeof URL !== "undefined"));
 	}
 
 	// Lazily create an inline worker that performs batched IndexedDB writes.
@@ -371,144 +387,52 @@ export class IndexedDbStoreGateway {
 		if (this.#worker) return;
 
 		try {
-			const workerSource = `
-        const CONTENT_HASH_INDEX = ${JSON.stringify(VECTOR_STORE_SCHEMA.contentHashIndex)};
-        const DB_VERSION = ${VECTOR_STORE_SCHEMA.currentVersion};
+			const workerSource = buildIndexedDbWriteWorkerSource(
+				VECTOR_STORE_SCHEMA.contentHashIndex,
+				VECTOR_STORE_SCHEMA.currentVersion,
+			);
+			this.#worker = this.#workerFactory(workerSource);
+			if (this.#worker) {
+				this.#worker.onmessage = (ev: MessageEvent) => {
+					const data = ev.data as {
+						type?: string;
+						id?: number;
+						error?: string;
+					};
+					if (!data || typeof data.type !== "string") return;
+					if (data.type === "putBatchAck" && typeof data.id === "number") {
+						const entry = this.#pendingWorkerResponses.get(data.id);
+						if (entry) {
+							try {
+								for (const req of entry.pendingRequests) {
+									try {
+										req.resolve();
+									} catch (_) {}
+								}
+								entry.resolve();
+							} catch (_) {}
+							this.#pendingWorkerResponses.delete(data.id);
+						}
+						return;
+					}
 
-        let dbPromise = null;
-
-        function requestToPromise(request){
-          return new Promise((resolve,reject)=>{
-            request.onsuccess = ()=> resolve(request.result);
-            request.onerror = ()=> reject(request.error || new Error('IndexedDB request failed'));
-          });
-        }
-
-        function transactionDone(transaction){
-          return new Promise((resolve,reject)=>{
-            transaction.oncomplete = ()=> resolve();
-            transaction.onerror = ()=> reject(transaction.error || new Error('IndexedDB transaction failed'));
-            transaction.onabort = ()=> reject(transaction.error || new Error('IndexedDB transaction aborted'));
-          });
-        }
-
-        function openDb(dbName, storeName, version){
-          if (dbPromise) return dbPromise;
-          dbPromise = new Promise((resolve,reject)=>{
-            const request = indexedDB.open(dbName, version || DB_VERSION);
-            request.onupgradeneeded = ()=>{
-              const database = request.result;
-              if (database.objectStoreNames.contains(storeName)){
-                try{
-                  const store = request.transaction?.objectStore(storeName);
-                  if (store && typeof store.indexNames?.contains === 'function' && !store.indexNames.contains(CONTENT_HASH_INDEX)){
-                    store.createIndex(CONTENT_HASH_INDEX, 'contentHash', { unique: false });
-                  }
-                }catch(e){/* ignore */}
-                return;
-              }
-              const created = database.createObjectStore(storeName, { keyPath: 'id' });
-              try{ created.createIndex(CONTENT_HASH_INDEX, 'contentHash', { unique: false }); }catch(e){}
-            };
-            request.onsuccess = ()=> resolve(request.result);
-            request.onerror = ()=> reject(request.error || new Error('Failed to open IndexedDB in worker'));
-          });
-          return dbPromise;
-        }
-
-        self.onmessage = async (ev)=>{
-          const msg = ev.data;
-          try{
-            if (!msg) return;
-            if (msg.type === 'putBatch'){
-              const db = await openDb(msg.dbName, msg.storeName, msg.version);
-              const records = msg.records || [];
-              const chunkSize = msg.chunkSize || 64;
-              for (let i = 0; i < records.length; i += chunkSize){
-                const end = Math.min(i + chunkSize, records.length);
-                const tx = db.transaction(msg.storeName, 'readwrite');
-                const store = tx.objectStore(msg.storeName);
-                for (let j = i; j < end; j++){
-                  const r = records[j];
-                  let embedding = null;
-                  if (r && r.embedding && r.embedding.type === 'buffer'){
-                    // reconstruct typed array view from transferred buffer
-                    try{ embedding = new Float32Array(r.embedding.buffer, 0, r.embedding.length); }catch(e){ embedding = new Float32Array(r.embedding.buffer); }
-                  } else if (r && r.embedding && r.embedding.type === 'array'){
-                    embedding = r.embedding.array;
-                  } else {
-                    embedding = r.embedding;
-                  }
-
-                  const recToPut = {
-                    id: r.id,
-                    content: r.content,
-                    embedding: embedding,
-                    metadata: r.metadata,
-                    contentHash: r.contentHash,
-                    cacheKey: r.cacheKey,
-                    embeddingSpace: r.embeddingSpace,
-                  };
-                  try{ store.put(recToPut); }catch(e){ /* swallow per-record put errors to allow tx to fail/propagate */ }
-                }
-                await transactionDone(tx);
-              }
-              self.postMessage({ type: 'putBatchAck', id: msg.id });
-            } else if (msg.type === 'init'){
-              await openDb(msg.dbName, msg.storeName, msg.version);
-              self.postMessage({ type: 'initAck' });
-            } else if (msg.type === 'close'){
-              if (dbPromise){
-                try{ const db = await dbPromise; db.close(); }catch(e){}
-                dbPromise = null;
-              }
-              self.postMessage({ type: 'closeAck', id: msg.id });
-            }
-          }catch(err){
-            try{ self.postMessage({ type: 'putBatchError', id: msg.id, error: String(err) }); }catch(e){}
-          }
-        };
-      `;
-
-			const blob = new Blob([workerSource], { type: "application/javascript" });
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-			this.#worker = new Worker(URL.createObjectURL(blob));
-
-			this.#worker.onmessage = (ev: MessageEvent) => {
-				const data = ev.data as { type?: string; id?: number; error?: string };
-				if (!data || typeof data.type !== "string") return;
-				if (data.type === "putBatchAck" && typeof data.id === "number") {
-					const entry = this.#pendingWorkerResponses.get(data.id);
-					if (entry) {
-						try {
+					if (data.type === "putBatchError" && typeof data.id === "number") {
+						const entry = this.#pendingWorkerResponses.get(data.id);
+						if (entry) {
+							try {
+								entry.reject(new Error(String(data.error ?? "worker error")));
+							} catch (_) {}
 							for (const req of entry.pendingRequests) {
 								try {
-									req.resolve();
+									req.reject(new Error(String(data.error ?? "worker error")));
 								} catch (_) {}
 							}
-							entry.resolve();
-						} catch (_) {}
-						this.#pendingWorkerResponses.delete(data.id);
-					}
-					return;
-				}
-
-				if (data.type === "putBatchError" && typeof data.id === "number") {
-					const entry = this.#pendingWorkerResponses.get(data.id);
-					if (entry) {
-						try {
-							entry.reject(new Error(String(data.error ?? "worker error")));
-						} catch (_) {}
-						for (const req of entry.pendingRequests) {
-							try {
-								req.reject(new Error(String(data.error ?? "worker error")));
-							} catch (_) {}
+							this.#pendingWorkerResponses.delete(data.id);
 						}
-						this.#pendingWorkerResponses.delete(data.id);
+						return;
 					}
-					return;
-				}
-			};
+				};
+			}
 		} catch (err) {
 			// If worker creation fails, disable worker usage and continue with
 			// main-thread writes as a fallback.

@@ -217,6 +217,57 @@ test("IndexedDbStoreGateway persists Float32Array embeddings", async (assert) =>
 	assert.end();
 });
 
+test("IndexedDbStoreGateway supports injected worker factories", async (assert) => {
+	installFakeIndexedDb();
+	const dbName = uniqueDbName();
+
+	class FakeWorker {
+		onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+
+		postMessage(message: unknown): void {
+			const msg = message as { type?: string; id?: number };
+			if (msg?.type === "putBatch" && typeof msg.id === "number") {
+				queueMicrotask(() => {
+					this.onmessage?.({
+						data: { type: "putBatchAck", id: msg.id },
+					} as unknown as MessageEvent<unknown>);
+				});
+			}
+		}
+
+		terminate(): void {}
+	}
+
+	let createdSource = "";
+	const gateway = new IndexedDbStoreGateway({
+		dbName,
+		storeName: "vectors",
+		workerFactory: (source) => {
+			createdSource = source;
+			return new FakeWorker();
+		},
+	});
+
+	await gateway.put([
+		{
+			id: "w1",
+			content: "worker test",
+			embeddingSpace: "space",
+			contentHash: "hw1",
+			cacheKey: "space:hw1",
+			embedding: [1, 2, 3],
+			metadata: {},
+		},
+	]);
+
+	assert.ok(
+		createdSource.includes("putBatch"),
+		"worker source includes putBatch handler",
+	);
+	await gateway.close();
+	assert.end();
+});
+
 test("VectorWritePipeline converts large number[] to Float32Array", async (assert) => {
 	// Use an embedding runtime that returns plain number[] vectors larger than threshold
 	const docs = [
