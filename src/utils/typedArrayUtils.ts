@@ -13,16 +13,28 @@ export function arrayLikeToFloat32(
 	if (ArrayBuffer.isView(value)) {
 		// Prefer returning the original Float32Array view when possible.
 		if (value instanceof Float32Array) return value;
-		const anyView = value as any;
-		const byteOffset = anyView.byteOffset ?? 0;
-		const length = anyView.length ?? Math.floor((anyView.byteLength ?? 0) / 4);
+		const view = value as ArrayBufferView & {
+			length?: number;
+			byteOffset?: number;
+			byteLength?: number;
+			buffer?: ArrayBuffer;
+		};
+		const byteOffset = (view as { byteOffset?: number }).byteOffset ?? 0;
+		const length =
+			(view as { length?: number; byteLength?: number }).length ??
+			Math.floor(((view as { byteLength?: number }).byteLength ?? 0) / 4);
 		try {
-			return new Float32Array(anyView.buffer, byteOffset, length);
+			return new Float32Array(
+				(view as { buffer: ArrayBuffer }).buffer,
+				byteOffset,
+				length,
+			);
 		} catch (_err) {
 			// Fall back to copying into a new Float32Array
 			const out = new Float32Array(length);
 			for (let i = 0; i < length; i++) {
-				out[i] = Number((anyView as any)[i]) || 0;
+				const asArrayLike = view as unknown as ArrayLike<number>;
+				out[i] = Number(asArrayLike[i]) || 0;
 			}
 			return out;
 		}
@@ -42,8 +54,9 @@ export function packRowsToFloat32(
 	const first = rows[0] as ArrayLike<number> | ArrayBufferView;
 	const inferredDims =
 		dims ??
-		(ArrayBuffer.isView(first) || (first as any).length
-			? ((first as any).length ?? 0)
+		(ArrayBuffer.isView(first) ||
+		typeof (first as { length?: unknown }).length === "number"
+			? ((first as { length?: number }).length ?? 0)
 			: 0);
 	const outDims = Number(inferredDims) || 0;
 	if (outDims === 0) return { buffer: new ArrayBuffer(0), rows: 0, dims: 0 };
@@ -71,7 +84,7 @@ export function packRowsToFloat32(
 		for (let r = 0; r < rowCount; r++) {
 			const al = rows[r] as ArrayLike<number>;
 			for (let c = 0; c < outDims; c++) {
-				flat[outIndex++] = Number((al as any)[c]) || 0;
+				flat[outIndex++] = Number(al[c]) || 0;
 			}
 		}
 		return { buffer: flat.buffer, rows: rowCount, dims: outDims };
@@ -114,7 +127,7 @@ export function packRowsToFloat32(
 
 		const al = row as ArrayLike<number>;
 		for (let c = 0; c < outDims; c++) {
-			flat[r * outDims + c] = Number((al as any)[c]) || 0;
+			flat[r * outDims + c] = Number(al[c]) || 0;
 		}
 	}
 

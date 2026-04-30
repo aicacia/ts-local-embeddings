@@ -157,27 +157,40 @@ function iterateRecords<T>(
 	});
 }
 
-function normalizeStoredVectorRecord(record: any): StoredVectorRecord {
-	if (!record || record.embedding == null) return record;
-	const emb = record.embedding;
+function normalizeStoredVectorRecord(record: unknown): StoredVectorRecord {
+	if (!record || typeof record !== "object" || record === null) {
+		// Not an object; return a minimal StoredVectorRecord cast to satisfy callers.
+		return record as unknown as StoredVectorRecord;
+	}
+
+	const rec = record as Partial<StoredVectorRecord & { embedding?: unknown }>;
+	if (rec.embedding == null) return rec as StoredVectorRecord;
+
+	const emb = rec.embedding;
 	try {
 		if (emb instanceof ArrayBuffer) {
-			record.embedding = new Float32Array(emb);
+			rec.embedding = new Float32Array(emb);
 		} else if (ArrayBuffer.isView(emb)) {
 			if (!(emb instanceof Float32Array)) {
-				const length =
-					(emb as any).length ?? Math.floor((emb as any).byteLength / 4);
-				record.embedding = new Float32Array(
-					(emb as any).buffer,
-					(emb as any).byteOffset ?? 0,
+				const view = emb as ArrayBufferView & {
+					length?: number;
+					byteLength?: number;
+					byteOffset?: number;
+					buffer?: ArrayBuffer;
+				};
+				const length = view.length ?? Math.floor((view.byteLength ?? 0) / 4);
+				rec.embedding = new Float32Array(
+					view.buffer as ArrayBuffer,
+					view.byteOffset ?? 0,
 					length,
 				);
 			}
 		}
 	} catch (_e) {
-		// If normalization fails, return record as-is.
+		// If normalization fails, return record as-is (cast to StoredVectorRecord).
 	}
-	return record;
+
+	return rec as StoredVectorRecord;
 }
 
 function applyMigrations(
@@ -518,7 +531,7 @@ export class IndexedDbStoreGateway {
 			transaction.objectStore(this.#storeName),
 		);
 		await transactionDone(transaction);
-		return records.map((r) => normalizeStoredVectorRecord(r as unknown as any));
+		return records.map((r) => normalizeStoredVectorRecord(r));
 	}
 
 	async iterateAll<T>(
@@ -569,7 +582,7 @@ export class IndexedDbStoreGateway {
 							if (recs && recs.length > 0) {
 								matchesByHash.set(
 									hash,
-									recs.map((r) => normalizeStoredVectorRecord(r as any)),
+									recs.map((r) => normalizeStoredVectorRecord(r)),
 								);
 							}
 						} catch (err) {
@@ -586,7 +599,7 @@ export class IndexedDbStoreGateway {
 				const indexRecords =
 					await getAllRecords<StoredVectorRecord>(indexSource);
 				for (const record of indexRecords) {
-					const normalized = normalizeStoredVectorRecord(record as any);
+					const normalized = normalizeStoredVectorRecord(record);
 					const contentHash = normalized.contentHash;
 					if (!contentHash || !uniqueSet.has(contentHash)) continue;
 					const arr = matchesByHash.get(contentHash);
@@ -610,7 +623,7 @@ export class IndexedDbStoreGateway {
 		}
 
 		const allRecords = (await getAllRecords<StoredVectorRecord>(store)).map(
-			(r) => normalizeStoredVectorRecord(r as any),
+			(r) => normalizeStoredVectorRecord(r),
 		);
 		// Fallback path: if the contentHash index is missing, this performs a full
 		// scan of the store so old database versions remain compatible.

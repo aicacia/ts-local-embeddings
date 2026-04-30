@@ -43,7 +43,7 @@ function hasSentenceEmbeddingWithToList(
 	);
 }
 
-function resolveCallable<T extends (...args: any[]) => any>(
+function resolveCallable<T = (...args: unknown[]) => unknown>(
 	value: unknown,
 	errorMessage: string,
 ): T {
@@ -53,8 +53,13 @@ function resolveCallable<T extends (...args: any[]) => any>(
 		return maybeCallable;
 	}
 
-	if (typeof (maybeCallable as any)._call === "function") {
-		return (maybeCallable as any)._call;
+	if (
+		typeof maybeCallable === "object" &&
+		maybeCallable !== null &&
+		"_call" in maybeCallable &&
+		typeof (maybeCallable as { _call?: unknown })._call === "function"
+	) {
+		return (maybeCallable as { _call: T })._call;
 	}
 
 	throw new Error(errorMessage);
@@ -112,9 +117,12 @@ export function resolveMaxInputTokens(
 	}
 
 	const tokenizerLimit = asFinitePositiveInteger(
-		(tokenizer as any).model_max_length,
+		(tokenizer as { model_max_length?: unknown }).model_max_length,
 	);
-	const modelConfig = ((model as any).config ?? {}) as Record<string, unknown>;
+	const modelConfig = ((model as { config?: unknown }).config ?? {}) as Record<
+		string,
+		unknown
+	>;
 
 	const modelLimitCandidates = [
 		asFinitePositiveInteger(modelConfig.max_position_embeddings),
