@@ -1,52 +1,63 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Document } from "@langchain/core/documents";
 import type { StoredVectorRecord } from "./vectorWritePipeline.js";
-import { computeVectorNorm } from "./utils.js";
+import { computeVectorNorm } from "./vectorMathUtils.js";
+import { isTypedArray } from "../utils/typedArrayUtils.js";
+import {
+	fallbackHash,
+	createContentHashGetter,
+	sha256,
+	type ContentHasher,
+} from "../utils/contentHashUtils.js";
+import { stableStringify } from "../utils/stableStringify.js";
 
-export function fallbackHash(input: string): string {
-	let hash = 5381;
-	for (let index = 0; index < input.length; index += 1) {
-		hash = (hash * 33) ^ input.charCodeAt(index);
-	}
+export { fallbackHash, createContentHashGetter, sha256, stableStringify };
+export type { ContentHasher };
 
-	return `fallback-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+const TYPED_ARRAY_CONVERSION_THRESHOLD = 16;
+
+export function normalizeEmbeddingForStorage(
+	embedding: number[] | Float32Array | ArrayBufferView,
+): number[] | Float32Array | ArrayBufferView {
+	return Array.isArray(embedding) &&
+		embedding.length >= TYPED_ARRAY_CONVERSION_THRESHOLD
+		? new Float32Array(embedding)
+		: embedding;
 }
 
-let __nodeCryptoModule: any | null = null;
-
-export async function sha256(input: string): Promise<string> {
+export function computeEmbeddingNorm(
+	embedding: number[] | Float32Array | ArrayBufferView,
+): number | undefined {
 	try {
-		if (typeof process !== "undefined" && (process as any).versions?.node) {
-			if (__nodeCryptoModule === null) {
-				__nodeCryptoModule = await import("node:crypto");
-			}
-			return __nodeCryptoModule
-				.createHash("sha256")
-				.update(input)
-				.digest("hex");
+		if (isTypedArray(embedding) || Array.isArray(embedding)) {
+			return computeVectorNorm(embedding as ArrayLike<number>);
 		}
-	} catch (_error) {
-		// fall through to fallback hashing in browser environments.
+	} catch (_e) {
+		return undefined;
 	}
 
-	return fallbackHash(input);
+	return undefined;
 }
 
-export function stableStringify(value: unknown): string {
-	if (value === null || typeof value !== "object") {
-		return JSON.stringify(value);
+export function warnIfLargeArrayEmbedding(
+	embeddedVectors: unknown,
+	threshold: number,
+	warningMessage: string,
+): boolean {
+	if (!Array.isArray(embeddedVectors)) {
+		return false;
 	}
 
-	if (Array.isArray(value)) {
-		return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+	for (let index = 0; index < embeddedVectors.length; index += 1) {
+		const ev = embeddedVectors[index] as unknown;
+		if (Array.isArray(ev) && (ev as any).length >= threshold) {
+			// eslint-disable-next-line no-console
+			console.warn(warningMessage);
+			return true;
+		}
 	}
 
-	const objectValue = value as Record<string, unknown>;
-	const sortedKeys = Object.keys(objectValue).sort();
-	return `{
-${sortedKeys
-	.map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`)
-	.join(",")}}`;
+	return false;
 }
 
 export function resolveRecordId(
@@ -87,29 +98,8 @@ export function mapStoredVectorRecord(args: {
 	const metadata =
 		(args.document.metadata as Record<string, unknown> | undefined) ?? {};
 
-	const emb = args.embedding;
-	const TYPED_ARRAY_CONVERSION_THRESHOLD = 16;
-	const embeddingForStorage: number[] | Float32Array | ArrayBufferView =
-		Array.isArray(emb) && emb.length >= TYPED_ARRAY_CONVERSION_THRESHOLD
-			? new Float32Array(emb)
-			: Array.isArray(emb)
-				? emb
-				: emb;
-
-	let embeddingNorm: number | undefined;
-	try {
-		if (ArrayBuffer.isView(embeddingForStorage)) {
-			embeddingNorm = computeVectorNorm(
-				embeddingForStorage as unknown as ArrayLike<number>,
-			);
-		} else if (Array.isArray(embeddingForStorage)) {
-			embeddingNorm = computeVectorNorm(
-				embeddingForStorage as ArrayLike<number>,
-			);
-		}
-	} catch (_e) {
-		embeddingNorm = undefined;
-	}
+	const embeddingForStorage = normalizeEmbeddingForStorage(args.embedding);
+	const embeddingNorm = computeEmbeddingNorm(embeddingForStorage);
 
 	return {
 		id: args.id,

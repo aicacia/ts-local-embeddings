@@ -16,12 +16,7 @@ import { computeVectorNorm, computeSimilarity } from "./vectorMathUtils.js";
 import { selectTopK } from "../utils/topKUtils.js";
 import { embedDocuments, embedQuery } from "../utils/embeddingUtils.js";
 import { createDocument, normalizeMetadata } from "../utils/documentUtils.js";
-import {
-	assertEqualLengthVectors,
-	calculateDotAndNorms,
-	cosineSimilarity,
-	cosineSimilarityWithQueryNorm,
-} from "./mathUtils.js";
+import { cosineSimilarity } from "./mathUtils.js";
 
 export type IndexedDBVectorStoreFilter = (doc: Document) => boolean;
 
@@ -325,23 +320,17 @@ export class IndexedDBVectorStore {
 
 		const useOptimizedCosine = this.#similarity === cosineSimilarity;
 		const queryNorm = useOptimizedCosine ? computeVectorNorm(query) : 0;
-		const computeSimilarity = (
+		const computeSimilarityValue = (
 			embedding: ArrayLike<number>,
 			recordNorm?: number,
-		): number => {
-			if (useOptimizedCosine && typeof recordNorm === "number") {
-				if (recordNorm === 0 || queryNorm === 0) return 0;
-				let dot = 0;
-				for (let i = 0; i < embedding.length; i += 1) {
-					dot += (query[i] as number) * (embedding[i] as number);
-				}
-				const score = dot / (queryNorm * recordNorm);
-				return Number.isFinite(score) ? score : 0;
-			}
-			return useOptimizedCosine
-				? cosineSimilarityWithQueryNorm(query, queryNorm, embedding)
-				: this.#similarity(query, embedding);
-		};
+		): number =>
+			computeSimilarity(
+				query,
+				embedding,
+				useOptimizedCosine ? queryNorm : undefined,
+				recordNorm,
+				useOptimizedCosine,
+			);
 
 		// Decide whether to fetch all records or stream via cursor. Streaming avoids materializing the entire DB into memory when the store is large.
 		let all: StoredVectorRecord[] = [];
@@ -379,7 +368,7 @@ export class IndexedDBVectorStore {
 				const embedding = record.embedding as ArrayLike<number>;
 				const recordNorm = (record as any).embeddingNorm as number | undefined;
 				return {
-					similarity: computeSimilarity(embedding, recordNorm),
+					similarity: computeSimilarityValue(embedding, recordNorm),
 					metadata: record.metadata,
 					content: record.content,
 					embedding: embedding,

@@ -6,7 +6,7 @@ import {
 	mapStoredVectorRecord,
 	resolveGroupKey,
 	resolveRecordId,
-	sha256,
+	createContentHashGetter,
 } from "./vectorWritePipelineUtils.js";
 
 export { resolveRecordId };
@@ -75,45 +75,154 @@ export function createVectorWritePipeline(
 	// avoid repeated numeric array allocations and structured-clone copies.
 	const EMBEDDING_TYPED_ARRAY_RECOMMENDATION_THRESHOLD = 16;
 	let warnedAboutArrayReturn = false;
-	// LRU-ish bounded cache for computed content hashes to avoid unbounded
-	// Map growth and repeated expensive hashing for identical documents.
-	const CONTENT_HASH_CACHE_MAX =
-		typeof options.contentHashCacheMax === "number" &&
-		Number.isFinite(options.contentHashCacheMax) &&
-		options.contentHashCacheMax > 0
-			? Math.max(1, Math.floor(options.contentHashCacheMax))
-			: 4096;
-	const contentHashCache = new Map<string, Promise<string>>();
 
-	function setContentHashCache(key: string, value: Promise<string>): void {
-		contentHashCache.set(key, value);
-		if (contentHashCache.size > CONTENT_HASH_CACHE_MAX) {
-			// evict oldest entry (Map preserves insertion order)
-			const firstKey = contentHashCache.keys().next().value as
-				| string
-				| undefined;
-			if (firstKey !== undefined) {
-				contentHashCache.delete(firstKey);
+	const getContentHash = createContentHashGetter({
+		contentHasher: options.contentHasher,
+		contentHashCacheMax: options.contentHashCacheMax,
+	});
+
+	function groupDocumentsForEmbedding(
+		documents: Document[],
+		contentHashes: string[],
+		cachedRecords: Array<StoredVectorRecord | null>,
+		resolvedIds: string[],
+		dedupStrategy: VectorWriteDedupStrategy,
+		embeddingSpace: string,
+	) {
+		const recordsToWrite: StoredVectorRecord[] = [];
+		const pendingEmbeddingGroups = new Map<string, PendingEmbeddingGroup>();
+		let reusedEmbeddingCount = 0;
+
+		for (let index = 0; index < documents.length; index += 1) {
+			const document = documents[index];
+			const id = resolvedIds[index];
+			const contentHash = contentHashes[index];
+			const cachedRecord = cachedRecords[index];
+
+			if (cachedRecord) {
+				reusedEmbeddingCount += 1;
+				recordsToWrite.push(
+					mapStoredVectorRecord({
+						id,
+						document,
+						embeddingSpace,
+						contentHash,
+						embedding: cachedRecord.embedding,
+					}),
+				);
+				continue;
+			}
+
+			const groupKey = resolveGroupKey(
+				dedupStrategy,
+				contentHash,
+				document,
+				index,
+			);
+			const existingGroup = pendingEmbeddingGroups.get(groupKey);
+			if (existingGroup) {
+				existingGroup.indices.push(index);
+				continue;
+			}
+
+			pendingEmbeddingGroups.set(groupKey, {
+				representativeDocument: document,
+				indices: [index],
+			});
+		}
+
+		return {
+			recordsToWrite,
+			pendingGroups: Array.from(pendingEmbeddingGroups.values()),
+			reusedEmbeddingCount,
+		};
+	}
+
+	function addPendingGroupRecords(
+		recordsToWrite: StoredVectorRecord[],
+		pendingGroups: PendingEmbeddingGroup[],
+		embeddedVectors: Array<number[] | Float32Array>,
+		resolvedIds: string[],
+		contentHashes: string[],
+		documents: Document[],
+		embeddingSpace: string,
+	) {
+		for (
+			let groupIndex = 0;
+			groupIndex < pendingGroups.length;
+			groupIndex += 1
+		) {
+			const group = pendingGroups[groupIndex];
+			const embedding = embeddedVectors[groupIndex] ?? [];
+
+			for (const originalIndex of group.indices) {
+				const document = documents[originalIndex];
+				recordsToWrite.push(
+					mapStoredVectorRecord({
+						id: resolvedIds[originalIndex],
+						document,
+						embeddingSpace,
+						contentHash: contentHashes[originalIndex],
+						embedding,
+					}),
+				);
 			}
 		}
 	}
 
-	async function getContentHash(content: string): Promise<string> {
-		const cachedHash = contentHashCache.get(content);
-		if (cachedHash) {
-			return cachedHash;
+	async function tryWriteRawEmbeddedRecords(
+		recordsToWrite: StoredVectorRecord[],
+		pendingGroups: PendingEmbeddingGroup[],
+		resolvedIds: string[],
+		contentHashes: string[],
+		documents: Document[],
+		embeddingSpace: string,
+		embedRaw: (documents: string[]) => Promise<unknown>,
+	): Promise<boolean> {
+		const raw = await embedRaw(
+			pendingGroups.map((group) => group.representativeDocument.pageContent),
+		);
+		if (
+			!raw ||
+			!(raw as { buffer?: unknown }).buffer ||
+			typeof (raw as any).rows !== "number" ||
+			typeof (raw as any).dims !== "number"
+		) {
+			return false;
 		}
 
-		const hashPromise = (async () => {
-			if (typeof options.contentHasher === "function") {
-				const maybe = options.contentHasher(content);
-				return typeof maybe === "string" ? maybe : await maybe;
-			}
-			return sha256(content);
-		})();
+		const { buffer, rows, dims } = raw as {
+			buffer: ArrayBuffer;
+			rows: number;
+			dims: number;
+		};
 
-		setContentHashCache(content, hashPromise);
-		return hashPromise;
+		if (rows !== pendingGroups.length) {
+			throw new Error(
+				`Embedding runtime produced ${rows} vectors for ${pendingGroups.length} documents.`,
+			);
+		}
+
+		const float32 = new Float32Array(buffer);
+		for (let groupIndex = 0; groupIndex < rows; groupIndex += 1) {
+			const start = groupIndex * dims;
+			const view = float32.subarray(start, start + dims);
+			const group = pendingGroups[groupIndex];
+			for (const originalIndex of group.indices) {
+				const document = documents[originalIndex];
+				recordsToWrite.push(
+					mapStoredVectorRecord({
+						id: resolvedIds[originalIndex],
+						document,
+						embeddingSpace,
+						contentHash: contentHashes[originalIndex],
+						embedding: view,
+					}),
+				);
+			}
+		}
+
+		return true;
 	}
 
 	return {
@@ -140,175 +249,73 @@ export function createVectorWritePipeline(
 				contents,
 			);
 
-			const recordsToWrite: StoredVectorRecord[] = [];
-			const pendingEmbeddingGroups = new Map<string, PendingEmbeddingGroup>();
-			let reusedEmbeddingCount = 0;
-
-			for (let index = 0; index < documents.length; index += 1) {
-				const document = documents[index];
-				const id = resolvedIds[index];
-				const contentHash = contentHashes[index];
-				const cachedRecord = cachedRecords[index];
-
-				if (cachedRecord) {
-					reusedEmbeddingCount += 1;
-					recordsToWrite.push(
-						mapStoredVectorRecord({
-							id,
-							document,
-							embeddingSpace,
-							contentHash,
-							embedding: cachedRecord.embedding,
-						}),
-					);
-					continue;
-				}
-
-				const groupKey = resolveGroupKey(
+			const { recordsToWrite, pendingGroups, reusedEmbeddingCount } =
+				groupDocumentsForEmbedding(
+					documents,
+					contentHashes,
+					cachedRecords,
+					resolvedIds,
 					dedupStrategy,
-					contentHash,
-					document,
-					index,
+					embeddingSpace,
 				);
-				const existingGroup = pendingEmbeddingGroups.get(groupKey);
-				if (existingGroup) {
-					existingGroup.indices.push(index);
-					continue;
-				}
 
-				pendingEmbeddingGroups.set(groupKey, {
-					representativeDocument: document,
-					indices: [index],
-				});
-			}
-
-			const uniquePendingGroups = Array.from(pendingEmbeddingGroups.values());
-			if (uniquePendingGroups.length > 0) {
-				const inputs = uniquePendingGroups.map(
+			if (pendingGroups.length > 0) {
+				const inputs = pendingGroups.map(
 					(group) => group.representativeDocument.pageContent,
 				);
 
-				// Prefer embedding runtimes that expose `embedDocumentsRaw` which
-				// returns a packed ArrayBuffer { buffer, rows, dims } so we can
-				// avoid per-row allocations and create zero-copy Float32Array
-				// subarray views into the transferred buffer.
 				const embedRaw = (options.embeddings as any).embedDocumentsRaw;
 				if (typeof embedRaw === "function") {
 					try {
-						const raw = await embedRaw.call(
-							options.embeddings,
-							inputs as string[],
+						const wroteRaw = await tryWriteRawEmbeddedRecords(
+							recordsToWrite,
+							pendingGroups,
+							resolvedIds,
+							contentHashes,
+							documents,
+							embeddingSpace,
+							embedRaw.bind(options.embeddings),
 						);
-						if (
-							raw &&
-							raw.buffer instanceof ArrayBuffer &&
-							typeof raw.rows === "number" &&
-							typeof raw.dims === "number"
-						) {
-							const { buffer, rows, dims } = raw as {
-								buffer: ArrayBuffer;
-								rows: number;
-								dims: number;
-							};
 
-							if (rows !== uniquePendingGroups.length) {
-								throw new Error(
-									`Embedding runtime produced ${rows} vectors for ${uniquePendingGroups.length} documents.`,
-								);
-							}
-
-							const float32 = new Float32Array(buffer);
-							for (let groupIndex = 0; groupIndex < rows; groupIndex += 1) {
-								const start = groupIndex * dims;
-								const view = float32.subarray(start, start + dims);
-								const group = uniquePendingGroups[groupIndex];
-								for (const originalIndex of group.indices) {
-									const document = documents[originalIndex];
-									recordsToWrite.push(
-										mapStoredVectorRecord({
-											id: resolvedIds[originalIndex],
-											document,
-											embeddingSpace,
-											contentHash: contentHashes[originalIndex],
-											embedding: view,
-										}),
-									);
-								}
-							}
-
-							// Skip fallback embedDocuments path.
+						if (wroteRaw) {
 							await options.putRecords(recordsToWrite);
 							return {
 								insertedCount: recordsToWrite.length,
 								reusedEmbeddingCount,
-								dedupGroupCount: uniquePendingGroups.length,
-							} as VectorWriteResult;
+								dedupGroupCount: pendingGroups.length,
+							};
 						}
-					} catch (err) {
+					} catch {
 						// If raw embedding extraction fails, fall back to standard path.
 					}
 				}
 
 				const embeddedVectors = await options.embeddings.embedDocuments(inputs);
 
-				// If the embedding runtime returns plain `number[]` arrays for large
-				// vectors, log a one-time recommendation to return `Float32Array` to
-				// avoid allocation + structured-clone overhead on the main thread.
-				if (!warnedAboutArrayReturn && Array.isArray(embeddedVectors)) {
-					for (let vi = 0; vi < embeddedVectors.length; vi++) {
-						const ev = embeddedVectors[vi] as unknown;
-						if (
-							Array.isArray(ev) &&
-							(ev as any).length >=
-								EMBEDDING_TYPED_ARRAY_RECOMMENDATION_THRESHOLD
-						) {
-							// eslint-disable-next-line no-console
-							console.warn(
-								"[local-embeddings] Performance: consider returning Float32Array from embeddings.embedDocuments to avoid copying large vectors.",
-							);
-							warnedAboutArrayReturn = true;
-							break;
-						}
-					}
-				}
-
-				if (embeddedVectors.length !== uniquePendingGroups.length) {
+				if (embeddedVectors.length !== pendingGroups.length) {
 					throw new Error(
-						`Embedding runtime produced ${embeddedVectors.length} vectors for ${uniquePendingGroups.length} documents.`,
+						`Embedding runtime produced ${embeddedVectors.length} vectors for ${pendingGroups.length} documents.`,
 					);
 				}
 
-				for (
-					let groupIndex = 0;
-					groupIndex < uniquePendingGroups.length;
-					groupIndex += 1
-				) {
-					const group = uniquePendingGroups[groupIndex];
-					const embedding = embeddedVectors[groupIndex] ?? [];
-
-					for (const originalIndex of group.indices) {
-						const document = documents[originalIndex];
-						recordsToWrite.push(
-							mapStoredVectorRecord({
-								id: resolvedIds[originalIndex],
-								document,
-								embeddingSpace,
-								contentHash: contentHashes[originalIndex],
-								embedding,
-							}),
-						);
-					}
-				}
+				addPendingGroupRecords(
+					recordsToWrite,
+					pendingGroups,
+					embeddedVectors,
+					resolvedIds,
+					contentHashes,
+					documents,
+					embeddingSpace,
+				);
 			}
 
 			await options.putRecords(recordsToWrite);
 			return {
 				insertedCount: recordsToWrite.length,
 				reusedEmbeddingCount,
-				dedupGroupCount: uniquePendingGroups.length,
+				dedupGroupCount: pendingGroups.length,
 			};
 		},
-
 		async addVectors(
 			vectors: number[][],
 			documents: Document[],

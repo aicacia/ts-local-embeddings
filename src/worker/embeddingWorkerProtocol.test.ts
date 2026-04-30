@@ -45,3 +45,22 @@ test("isWorkerResponse rejects malformed embedDocuments progress payloads", (ass
 	);
 	assert.end();
 });
+
+test("isWorkerResponse accepts valid documentsEmbedded payloads", (assert) => {
+	const response = {
+		type: "documentsEmbedded",
+		requestId: 1,
+		payload: {
+			embeddings: [
+				[1, 2, 3],
+				[4, 5, 6],
+			],
+		},
+	};
+
+	assert.ok(
+		isWorkerResponse(response),
+		"valid documentsEmbedded payload is accepted",
+	);
+	assert.end();
+});

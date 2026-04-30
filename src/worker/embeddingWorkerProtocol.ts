@@ -100,8 +100,34 @@ function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
-function isFiniteRequestId(value: unknown): value is number {
+function isString(value: unknown): value is string {
+	return typeof value === "string";
+}
+
+function isArrayOf<T>(
+	value: unknown,
+	predicate: (item: unknown) => item is T,
+): value is T[] {
+	return Array.isArray(value) && value.every(predicate);
+}
+
+function isFiniteNumber(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value);
+}
+
+function hasOptionalStringProperty(
+	value: Record<string, unknown>,
+	property: string,
+): boolean {
+	return !(property in value) || isString(value[property]);
+}
+
+function isPlainBufferLike(value: unknown): boolean {
+	return (
+		isObject(value) &&
+		typeof (value as Record<string, unknown>).byteLength === "number" &&
+		Number.isFinite((value as Record<string, unknown>).byteLength)
+	);
 }
 
 function isWorkerInitPayload(
@@ -115,59 +141,38 @@ function isEmbedDocumentsPayload(
 ): value is WorkerRequestMap["embedDocuments"] {
 	return (
 		isObject(value) &&
-		Array.isArray(value.documents) &&
-		value.documents.every((document) => typeof document === "string")
+		isArrayOf((value as Record<string, unknown>).documents, isString)
 	);
 }
 
 function isEmbedQueryPayload(
 	value: unknown,
 ): value is WorkerRequestMap["embedQuery"] {
-	return isObject(value) && typeof value.document === "string";
+	return (
+		isObject(value) && isString((value as Record<string, unknown>).document)
+	);
 }
 
 function isSerializedErrorCause(value: unknown): boolean {
-	if (!isObject(value) || typeof value.message !== "string") {
-		return false;
-	}
-
-	if ("name" in value && typeof value.name !== "string") {
-		return false;
-	}
-
-	if ("code" in value && typeof value.code !== "string") {
-		return false;
-	}
-
-	return true;
+	return (
+		isObject(value) &&
+		isString(value.message) &&
+		hasOptionalStringProperty(value, "name") &&
+		hasOptionalStringProperty(value, "code")
+	);
 }
 
 export function isSerializedError(value: unknown): value is SerializedError {
-	if (!isObject(value) || typeof value.message !== "string") {
-		return false;
-	}
-
-	if ("name" in value && typeof value.name !== "string") {
-		return false;
-	}
-
-	if ("stack" in value && typeof value.stack !== "string") {
-		return false;
-	}
-
-	if ("code" in value && typeof value.code !== "string") {
-		return false;
-	}
-
-	if (
-		"cause" in value &&
-		(!Array.isArray(value.cause) ||
-			!value.cause.every((cause) => isSerializedErrorCause(cause)))
-	) {
-		return false;
-	}
-
-	return true;
+	return (
+		isObject(value) &&
+		isString(value.message) &&
+		hasOptionalStringProperty(value, "name") &&
+		hasOptionalStringProperty(value, "stack") &&
+		hasOptionalStringProperty(value, "code") &&
+		(!("cause" in value) ||
+			(Array.isArray(value.cause) &&
+				value.cause.every((cause) => isSerializedErrorCause(cause))))
+	);
 }
 
 export function isWorkerRequest(value: unknown): value is WorkerRequest {
@@ -175,7 +180,7 @@ export function isWorkerRequest(value: unknown): value is WorkerRequest {
 		return false;
 	}
 
-	if (!isFiniteRequestId(value.requestId) || typeof value.type !== "string") {
+	if (!isFiniteNumber(value.requestId) || typeof value.type !== "string") {
 		return false;
 	}
 
@@ -189,10 +194,6 @@ export function isWorkerRequest(value: unknown): value is WorkerRequest {
 		default:
 			return false;
 	}
-}
-
-function isFiniteNumber(value: unknown): value is number {
-	return typeof value === "number" && Number.isFinite(value);
 }
 
 function isBatchDecisionEvent(
@@ -263,8 +264,7 @@ function isDocumentsEmbeddedPayload(
 			typeof b.dims === "number" &&
 			Number.isFinite(b.dims) &&
 			b.dims > 0 &&
-			isObject(b.buffer) &&
-			typeof (b.buffer as any).byteLength === "number"
+			isPlainBufferLike(b.buffer)
 		) {
 			return true;
 		}
@@ -293,8 +293,7 @@ function isQueryEmbeddedPayload(
 			typeof b.dims === "number" &&
 			Number.isFinite(b.dims) &&
 			b.dims > 0 &&
-			isObject(b.buffer) &&
-			typeof (b.buffer as any).byteLength === "number"
+			isPlainBufferLike(b.buffer)
 		) {
 			return true;
 		}
@@ -308,7 +307,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
 		return false;
 	}
 
-	if (!isFiniteRequestId(value.requestId) || typeof value.type !== "string") {
+	if (!isFiniteNumber(value.requestId) || typeof value.type !== "string") {
 		return false;
 	}
 
