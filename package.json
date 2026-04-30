@@ -17,13 +17,7 @@
 		},
 		"./package.json": "./package.json"
 	},
-	"files": [
-		"esm/",
-		"types/",
-		"README.md",
-		"LICENSE-MIT",
-		"LICENSE-APACHE"
-	],
+	"files": ["esm/", "types/", "README.md", "LICENSE-MIT", "LICENSE-APACHE"],
 	"scripts": {
 		"tape:runner": "TS_NODE_TRANSPILE_ONLY=true node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' node_modules/tape/bin/tape",
 		"build:ts": "tsc -p tsconfig.json",
@@ -101,16 +95,8 @@
 		"@langchain/core": "^1.1.41"
 	},
 	"nyc": {
-		"include": [
-			"src"
-		],
-		"exclude": [
-			"src/**/*.test.*",
-			"src/**/*.suite.*"
-		],
-		"extension": [
-			".ts",
-			".tsx"
-		]
+		"include": ["src"],
+		"exclude": ["src/**/*.test.*", "src/**/*.suite.*"],
+		"extension": [".ts", ".tsx"]
 	}
 }
