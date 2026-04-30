@@ -1,4 +1,5 @@
 import type { StoredVectorRecord } from "./vectorWritePipeline.js";
+import { serializeEmbeddingForTransfer } from "../serialization/transfer.js";
 
 export const VECTOR_STORE_SCHEMA = {
 	defaultDbName: "langchain-indexeddb-vectorstore",
@@ -796,14 +797,11 @@ export class IndexedDbStoreGateway {
 			// Float32Array buffers to the worker; otherwise perform writes on
 			// the main thread as before.
 			if (this.#worker) {
-				const TYPED_ARRAY_TRANSFER_THRESHOLD =
-					this.#typedArrayTransferThreshold ?? 64;
 				const serialized: any[] = [];
 				const transferList: ArrayBuffer[] = [];
 
 				for (let i = 0; i < combined.length; i++) {
 					const rec = combined[i] as StoredVectorRecord & { embedding?: any };
-					const emb = rec.embedding as any;
 					const out: any = {
 						id: rec.id,
 						content: rec.content,
@@ -813,85 +811,15 @@ export class IndexedDbStoreGateway {
 						embeddingSpace: rec.embeddingSpace,
 					};
 
-					if (ArrayBuffer.isView(emb)) {
-						const view = emb as ArrayBufferView & {
-							length?: number;
-							byteOffset?: number;
-						};
-						const length =
-							(view as any).length ?? Math.floor((view as any).byteLength / 4);
-						if (length >= TYPED_ARRAY_TRANSFER_THRESHOLD) {
-							const canTransferOriginal =
-								this.#transferOwnership &&
-								(view as any).byteOffset === 0 &&
-								(view as any).buffer.byteLength === (view as any).byteLength;
-							if (canTransferOriginal) {
-								out.embedding = {
-									type: "buffer",
-									buffer: (view as any).buffer,
-									length,
-								};
-								transferList.push((view as any).buffer);
-							} else {
-								// Create a fast bulk copy using typed-array set
-								const copy = new Float32Array(length);
-								if (view instanceof Float32Array) {
-									copy.set(view as Float32Array);
-								} else {
-									copy.set(
-										new Float32Array(
-											(view as any).buffer,
-											(view as any).byteOffset ?? 0,
-											length,
-										),
-									);
-								}
-								out.embedding = { type: "buffer", buffer: copy.buffer, length };
-								transferList.push(copy.buffer);
-							}
-						} else {
-							out.embedding = {
-								type: "array",
-								array: Array.from(view as unknown as number[]),
-							};
-						}
-					} else if (Array.isArray(emb)) {
-						const arr = emb as number[];
-						if (arr.length >= TYPED_ARRAY_TRANSFER_THRESHOLD) {
-							const fa = Float32Array.from(arr);
-							out.embedding = {
-								type: "buffer",
-								buffer: fa.buffer,
-								length: fa.length,
-							};
-							transferList.push(fa.buffer);
-						} else {
-							out.embedding = { type: "array", array: arr };
-						}
-					} else if (emb instanceof ArrayBuffer) {
-						const length = Math.floor(emb.byteLength / 4);
-						if (length >= TYPED_ARRAY_TRANSFER_THRESHOLD) {
-							if (this.#transferOwnership) {
-								out.embedding = { type: "buffer", buffer: emb, length };
-								transferList.push(emb);
-							} else {
-								const fa = new Float32Array(emb);
-								const copy = Float32Array.from(fa);
-								out.embedding = {
-									type: "buffer",
-									buffer: copy.buffer,
-									length: copy.length,
-								};
-								transferList.push(copy.buffer);
-							}
-						} else {
-							const fa = new Float32Array(emb);
-							out.embedding = { type: "array", array: Array.from(fa) };
-						}
-					} else {
-						out.embedding = emb;
-					}
+					const { serializedEmbedding, transferList: embeddingTransferList } =
+						serializeEmbeddingForTransfer(rec.embedding, {
+							transferThreshold: this.#typedArrayTransferThreshold,
+							transferOwnership: this.#transferOwnership,
+							persistEmbeddingAs: this.#persistEmbeddingAs,
+						});
 
+					out.embedding = serializedEmbedding;
+					transferList.push(...embeddingTransferList);
 					serialized.push(out);
 				}
 

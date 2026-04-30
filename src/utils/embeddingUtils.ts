@@ -1,6 +1,11 @@
 // Shared embedding and packing utilities for LocalEmbeddings, WorkerEmbeddings, IndexedDBVectorStore
-import { packRowsToFloat32 } from "./typedArrayUtils.js";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
+import {
+	packEmbeddings as packEmbeddingsCore,
+	packEmbeddingsForTransfer,
+	serializeEmbeddingForTransfer,
+	type TransferPolicy,
+} from "../serialization/transfer.js";
 
 /**
  * Embed an array of documents using the provided embeddings interface.
@@ -30,5 +35,8 @@ export function packEmbeddings(embeddings: ArrayLike<number>[]): {
 	rows: number;
 	dims: number;
 } {
-	return packRowsToFloat32(embeddings);
+	return packEmbeddingsCore(embeddings);
 }
+
+export { packEmbeddingsForTransfer, serializeEmbeddingForTransfer };
+export type { TransferPolicy };
