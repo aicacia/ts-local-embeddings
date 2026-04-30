@@ -2,6 +2,7 @@
 /node_modules/
 /coverage/
 /.rollup.cache/
+/browser/
 /docs/
 /types/
 /dist/

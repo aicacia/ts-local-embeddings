@@ -1,8 +1,8 @@
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
+import typescript from "@rollup/plugin-typescript";
 import terser from "@rollup/plugin-terser";
 import esmImportToUrl from "rollup-plugin-esm-import-to-url";
-import typescript2 from "rollup-plugin-typescript2";
 
 export default [
 	{
@@ -19,22 +19,13 @@ export default [
 		},
 		output: [
 			{
-				dir: "dist/browser",
+				dir: "browser",
 				format: "es",
 				sourcemap: true,
-				entryFileNames: "[name].js",
 				plugins: [terser()],
 			},
 		],
 		plugins: [
-			typescript2({
-				tsconfigOverride: {
-					compilerOptions: {
-						module: "ES2020",
-						moduleResolution: "bundler",
-					},
-				},
-			}),
 			esmImportToUrl({
 				imports: {
 					tslib: "https://unpkg.com/tslib@2/tslib.es6.js",
@@ -43,6 +34,15 @@ export default [
 			resolve({ browser: true }),
 			commonjs({
 				transformMixedEsModules: true,
+			}),
+			typescript({
+				tsconfig: "./tsconfig.json",
+				compilerOptions: {
+					outDir: "browser",
+					declaration: false,
+					declarationMap: false,
+					declarationDir: undefined,
+				},
 			}),
 		],
 	},

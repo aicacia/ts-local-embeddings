@@ -17,7 +17,13 @@
 		},
 		"./package.json": "./package.json"
 	},
-	"files": ["esm/", "types/", "README.md", "LICENSE-MIT", "LICENSE-APACHE"],
+	"files": [
+		"esm/",
+		"types/",
+		"README.md",
+		"LICENSE-MIT",
+		"LICENSE-APACHE"
+	],
 	"scripts": {
 		"tape:runner": "TS_NODE_TRANSPILE_ONLY=true node --import 'data:text/javascript,import { register } from \"node:module\"; import { pathToFileURL } from \"node:url\"; register(\"ts-node/esm\", pathToFileURL(\"./\"));' node_modules/tape/bin/tape",
 		"build:ts": "tsc -p tsconfig.json",
@@ -29,7 +35,7 @@
 		"test": "pnpm run -s tape:runner -- src/**/*.test.{ts,tsx} | pnpm exec tap-spec",
 		"coverage": "c8 --check-coverage --lines 75 --reporter=lcov --reporter=text pnpm run -s tape:runner -- src/**/*.test.{ts,tsx} | pnpm exec tap-spec",
 		"coverageHTML": "c8 --check-coverage --lines 75 --reporter=lcov --reporter=html pnpm run -s tape:runner -- src/**/*.test.{ts,tsx} | pnpm exec tap-spec",
-		"clean": "rm -rf esm browser dist types .nyc_output coverage",
+		"clean": "rm -rf esm browser dist types .nyc_output coverage tsconfig.tsbuildinfo",
 		"lint": "biome lint ./src",
 		"format": "biome format --write .",
 		"format:check": "biome format --check .",
@@ -95,8 +101,16 @@
 		"@langchain/core": "^1.1.41"
 	},
 	"nyc": {
-		"include": ["src"],
-		"exclude": ["src/**/*.test.*", "src/**/*.suite.*"],
-		"extension": [".ts", ".tsx"]
+		"include": [
+			"src"
+		],
+		"exclude": [
+			"src/**/*.test.*",
+			"src/**/*.suite.*"
+		],
+		"extension": [
+			".ts",
+			".tsx"
+		]
 	}
 }
