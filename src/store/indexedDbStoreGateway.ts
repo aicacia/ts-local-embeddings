@@ -1,5 +1,6 @@
 import type { StoredVectorRecord } from "./vectorWritePipeline.js";
 import { serializeEmbeddingForTransfer } from "../serialization/transfer.js";
+import { toFloat32Array } from "../utils/typedArrayUtils.js";
 import {
 	buildIndexedDbWriteWorkerSource,
 	createDefaultIndexedDbWriteWorkerFactory,
@@ -168,23 +169,10 @@ function normalizeStoredVectorRecord(record: unknown): StoredVectorRecord {
 
 	const emb = rec.embedding;
 	try {
-		if (emb instanceof ArrayBuffer) {
-			rec.embedding = new Float32Array(emb);
-		} else if (ArrayBuffer.isView(emb)) {
-			if (!(emb instanceof Float32Array)) {
-				const view = emb as ArrayBufferView & {
-					length?: number;
-					byteLength?: number;
-					byteOffset?: number;
-					buffer?: ArrayBuffer;
-				};
-				const length = view.length ?? Math.floor((view.byteLength ?? 0) / 4);
-				rec.embedding = new Float32Array(
-					view.buffer as ArrayBuffer,
-					view.byteOffset ?? 0,
-					length,
-				);
-			}
+		if (emb instanceof ArrayBuffer || ArrayBuffer.isView(emb)) {
+			rec.embedding = toFloat32Array(
+				emb as ArrayBuffer | ArrayLike<number> | ArrayBufferView,
+			);
 		}
 	} catch (_e) {
 		// If normalization fails, return record as-is (cast to StoredVectorRecord).

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Document } from "@langchain/core/documents";
 import type { StoredVectorRecord } from "./vectorWritePipeline.js";
-import { computeVectorNorm } from "./vectorMathUtils.js";
+import { computeVectorNorm } from "./mathUtils.js";
 import { isTypedArray } from "../utils/typedArrayUtils.js";
 import {
 	fallbackHash,

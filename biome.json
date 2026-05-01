@@ -15,6 +15,12 @@
 	},
 	"linter": {
 		"rules": {
+			"correctness": {
+				"noUnusedImports": "off",
+				"noUnusedFunctionParameters": "off",
+				"noUnusedVariables": "off",
+				"noUnusedPrivateClassMembers": "off"
+			},
 			"suspicious": {
 				"noExplicitAny": "off",
 				"noControlCharactersInRegex": "off"

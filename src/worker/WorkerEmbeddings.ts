@@ -19,11 +19,7 @@ import {
 	mapDocumentsEmbeddedResponse,
 	mapQueryEmbeddedResponse,
 } from "./workerEmbeddingsUtils.js";
-import {
-	embedDocuments,
-	embedQuery,
-	packEmbeddings,
-} from "../utils/embeddingUtils.js";
+import { packEmbeddings } from "../utils/embeddingUtils.js";
 
 export type WorkerEmbeddingsOptions = {
 	runtime?: LoadEmbeddingRuntimeOptions;

@@ -7,6 +7,16 @@ export function isTypedArray(value: unknown): value is ArrayBufferView {
 	);
 }
 
+export function toFloat32Array(
+	value: ArrayBuffer | ArrayLike<number> | ArrayBufferView,
+): Float32Array {
+	if (value instanceof ArrayBuffer) {
+		return new Float32Array(value);
+	}
+
+	return arrayLikeToFloat32(value);
+}
+
 export function arrayLikeToFloat32(
 	value: ArrayLike<number> | ArrayBufferView,
 ): Float32Array {

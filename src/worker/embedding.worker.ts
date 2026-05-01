@@ -18,7 +18,6 @@ import type {
 	SerializedError,
 	WorkerRequest,
 	WorkerRequestMap,
-	WorkerResponse,
 	WorkerResponseWithTransfer,
 } from "./embeddingWorkerProtocol.js";
 import { isWorkerRequest } from "./embeddingWorkerProtocol.js";

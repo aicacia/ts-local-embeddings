@@ -12,10 +12,10 @@ import {
 } from "./indexedDbStoreGateway.js";
 import type { VectorStoreGateway } from "./VectorStoreGateway.js";
 import type { StorageGatewayPort } from "./indexedDbStoreGateway.js";
-import { computeVectorNorm, computeSimilarity } from "./vectorMathUtils.js";
+import { computeVectorNorm, computeSimilarity } from "./mathUtils.js";
 import { selectTopK } from "../utils/topKUtils.js";
-import { embedDocuments, embedQuery } from "../utils/embeddingUtils.js";
-import { createDocument, normalizeMetadata } from "../utils/documentUtils.js";
+import { embedQuery } from "../utils/embeddingUtils.js";
+import { createDocument } from "../utils/documentUtils.js";
 import { cosineSimilarity } from "./mathUtils.js";
 
 export type IndexedDBVectorStoreFilter = (doc: Document) => boolean;
@@ -30,8 +30,6 @@ export type IndexedDBVectorStoreArgs = {
 	// `getAll()` to reduce memory pressure. Default: 10000.
 	getAllThreshold?: number;
 };
-
-// Vector math helpers are provided by ./mathUtils.js
 
 // Use shared createDocument from documentUtils
 

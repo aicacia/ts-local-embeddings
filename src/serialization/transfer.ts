@@ -1,7 +1,4 @@
-import {
-	arrayLikeToFloat32,
-	packRowsToFloat32,
-} from "../utils/typedArrayUtils.js";
+import { packRowsToFloat32, toFloat32Array } from "../utils/typedArrayUtils.js";
 
 export type TransferPolicy = {
 	transferThreshold?: number;
@@ -77,7 +74,7 @@ export function serializeEmbeddingForTransfer(
 	const transferOwnership = policy.transferOwnership ?? true;
 
 	if (ArrayBuffer.isView(embedding)) {
-		const view = arrayLikeToFloat32(embedding);
+		const view = toFloat32Array(embedding);
 		const length = view.length;
 		if (shouldTransfer(length, threshold)) {
 			const { buffer, transferList } = resolveTransferOwnership(
@@ -97,7 +94,7 @@ export function serializeEmbeddingForTransfer(
 	}
 
 	if (embedding instanceof ArrayBuffer) {
-		const view = new Float32Array(embedding);
+		const view = toFloat32Array(embedding);
 		const length = view.length;
 		if (shouldTransfer(length, threshold)) {
 			if (transferOwnership) {
@@ -107,7 +104,7 @@ export function serializeEmbeddingForTransfer(
 				};
 			}
 
-			const copy = Float32Array.from(view);
+			const copy = new Float32Array(view);
 			return {
 				serializedEmbedding: {
 					type: "buffer",

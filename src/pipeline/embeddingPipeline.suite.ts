@@ -1,4 +1,4 @@
-import type { Suite, Deferred } from "benchmark";
+import type { Suite } from "benchmark";
 import type { LocalEmbeddingsRuntime } from "./createEmbeddingPipeline.js";
 import { createEmbeddingPipeline } from "./createEmbeddingPipeline.js";
 import { estimateDocumentTokenLength, resolveBatchLimits } from "./batching.js";

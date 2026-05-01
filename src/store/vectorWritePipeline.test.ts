@@ -1,4 +1,3 @@
-import { Document } from "@langchain/core/documents";
 import test from "tape";
 import {
 	createVectorWritePipeline,

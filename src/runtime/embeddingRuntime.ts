@@ -1,7 +1,6 @@
 import type { AutoModel, AutoTokenizer } from "@huggingface/transformers";
 import { HuggingFaceRuntimeLoader } from "./runtimeLoader.js";
 import type {
-	EmbeddingModelFallback,
 	LoadEmbeddingRuntimeOptions,
 	RuntimeLoaderPort,
 } from "./runtimeLoaderPort.js";

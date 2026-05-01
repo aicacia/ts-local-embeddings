@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Suite, Deferred } from "benchmark";
-import { Document } from "@langchain/core/documents";
 import { createVectorWritePipeline } from "./vectorWritePipeline.js";
 import type { Constructor } from "../types.js";
 import { createDocuments } from "../utils/documentUtils.js";
