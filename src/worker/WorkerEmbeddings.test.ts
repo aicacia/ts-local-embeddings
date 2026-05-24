@@ -1,12 +1,12 @@
 import test from "tape";
 import { setDebugLogging } from "../debug.js";
-import { WorkerEmbeddings } from "./WorkerEmbeddings.js";
-import { normalizeLoadEmbeddingRuntimeOptions } from "./workerRuntimeOptions.js";
 import type {
 	WorkerRequest,
 	WorkerRequestType,
 	WorkerResponse,
 } from "./embeddingWorkerProtocol.js";
+import { WorkerEmbeddings } from "./WorkerEmbeddings.js";
+import { normalizeLoadEmbeddingRuntimeOptions } from "./workerRuntimeOptions.js";
 
 type FakeWorkerOptions = {
 	failFirstInit?: boolean;

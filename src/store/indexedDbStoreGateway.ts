@@ -1,5 +1,7 @@
-import type { StoredVectorRecord } from "./vectorWritePipeline.js";
-import { serializeEmbeddingForTransfer } from "../serialization/transfer.js";
+import {
+	type SerializedEmbedding,
+	serializeEmbeddingForTransfer,
+} from "../serialization/transfer.js";
 import { toFloat32Array } from "../utils/typedArrayUtils.js";
 import {
 	buildIndexedDbWriteWorkerSource,
@@ -7,6 +9,7 @@ import {
 	type IndexedDbWriteWorkerFactory,
 	type IndexedDbWriteWorkerPort,
 } from "./indexedDbWriteWorker.js";
+import type { StoredVectorRecord } from "./vectorWritePipeline.js";
 
 export const VECTOR_STORE_SCHEMA = {
 	defaultDbName: "langchain-indexeddb-vectorstore",
@@ -527,13 +530,10 @@ export class IndexedDbStoreGateway {
 	): Promise<void> {
 		const database = await this.open();
 		const transaction = database.transaction(this.#storeName, "readonly");
-		await iterateRecords<any>(
-			transaction.objectStore(this.#storeName),
-			(rec) => {
-				const normalized = normalizeStoredVectorRecord(rec as any);
-				return callback(normalized as unknown as T);
-			},
-		);
+		await iterateRecords(transaction.objectStore(this.#storeName), (rec) => {
+			const normalized = normalizeStoredVectorRecord(rec);
+			return callback(normalized as unknown as T);
+		});
 		await transactionDone(transaction);
 	}
 
@@ -573,12 +573,12 @@ export class IndexedDbStoreGateway {
 									recs.map((r) => normalizeStoredVectorRecord(r)),
 								);
 							}
-						} catch (err) {
+						} catch {
 							usedFallback = true;
 						}
 					}),
 				);
-			} catch (_err) {
+			} catch {
 				usedFallback = true;
 			}
 
@@ -722,18 +722,21 @@ export class IndexedDbStoreGateway {
 			// Float32Array buffers to the worker; otherwise perform writes on
 			// the main thread as before.
 			if (this.#worker) {
-				const serialized: any[] = [];
+				const serialized: unknown[] = [];
 				const transferList: ArrayBuffer[] = [];
 
 				for (let i = 0; i < combined.length; i++) {
-					const rec = combined[i] as StoredVectorRecord & { embedding?: any };
-					const out: any = {
+					const rec = combined[i] as StoredVectorRecord & {
+						embedding?: SerializedEmbedding;
+					};
+					const out = {
 						id: rec.id,
 						content: rec.content,
 						metadata: rec.metadata,
 						contentHash: rec.contentHash,
 						cacheKey: rec.cacheKey,
 						embeddingSpace: rec.embeddingSpace,
+						embedding: undefined as SerializedEmbedding | undefined,
 					};
 
 					const { serializedEmbedding, transferList: embeddingTransferList } =

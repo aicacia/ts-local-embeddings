@@ -1,33 +1,40 @@
 {
 	"$schema": "node_modules/@biomejs/biome/configuration_schema.json",
-	"files": {
-		"ignoreUnknown": true,
-		"ignore": [
-			"dist/browser/**/*",
-			"coverage/**/*",
-			".nyc_output/**/*",
-			"docs/**/*",
-			"esm/**/*",
-			"github-pages/**/*",
-			"node_modules/**/*",
-			"types/**/*"
-		]
-	},
 	"linter": {
+		"enabled": true,
 		"rules": {
-			"correctness": {
-				"noUnusedImports": "off",
-				"noUnusedFunctionParameters": "off",
-				"noUnusedVariables": "off",
-				"noUnusedPrivateClassMembers": "off"
-			},
-			"suspicious": {
-				"noExplicitAny": "off",
-				"noControlCharactersInRegex": "off"
-			},
-			"style": {
-				"useConst": "off"
+			"recommended": true
+		}
+	},
+	"formatter": {
+		"enabled": true
+	},
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on"
 			}
 		}
+	},
+	"html": {
+		"experimentalFullSupportEnabled": true
+	},
+	"javascript": {
+		"experimentalEmbeddedSnippetsEnabled": true
+	},
+	"files": {
+		"ignoreUnknown": true,
+		"includes": [
+			"**",
+			"!.rollup.cache",
+			"!browser",
+			"!coverage",
+			"!.nyc_output",
+			"!docs",
+			"!cjs",
+			"!esm",
+			"!types",
+			"!github-pages/.svelte-kit"
+		]
 	}
 }

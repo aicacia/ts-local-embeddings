@@ -1,11 +1,10 @@
 import test from "tape";
+import { createDocument } from "../utils/documentUtils.js";
 import {
 	createVectorWritePipeline,
 	resolveRecordId,
 	type StoredVectorRecord,
 } from "./vectorWritePipeline.js";
-
-import { createDocument } from "../utils/documentUtils.js";
 
 test("vectorWritePipeline dedups groups and fans out a single embedding", async (assert) => {
 	let embedCalls = 0;

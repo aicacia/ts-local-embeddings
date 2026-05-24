@@ -38,5 +38,5 @@ export function packEmbeddings(embeddings: ArrayLike<number>[]): {
 	return packEmbeddingsCore(embeddings);
 }
 
-export { packEmbeddingsForTransfer, serializeEmbeddingForTransfer };
 export type { TransferPolicy };
+export { packEmbeddingsForTransfer, serializeEmbeddingForTransfer };

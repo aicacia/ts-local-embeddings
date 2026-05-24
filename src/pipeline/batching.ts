@@ -1,3 +1,4 @@
+// biome-ignore lint/suspicious/noControlCharactersInRegex: unicode chars
 const MULTIBYTE_REGEX = /[^\u0000-\u00ff]/;
 
 export function estimateDocumentTokenLength(
@@ -26,7 +27,6 @@ export function resolveBatchLimits(maxInputTokens: number): {
 	targetBatchTokens: number;
 	maxDocumentsPerBatch: number;
 } {
-	const MAX_INPUT_TOKENS_FALLBACK = 512;
 	const MIN_DOCUMENTS_PER_BATCH_FALLBACK = 32;
 	const TARGET_BATCH_TOKENS_FALLBACK = 4096;
 	const TARGET_BATCH_TOKENS_MAX = 16384;

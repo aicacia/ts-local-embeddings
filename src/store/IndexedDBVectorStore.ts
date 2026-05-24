@@ -1,22 +1,25 @@
 import { Document } from "@langchain/core/documents";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import { maximalMarginalRelevance } from "@langchain/core/utils/math";
+import { createDocument } from "../utils/documentUtils.js";
+import { embedQuery } from "../utils/embeddingUtils.js";
+import { selectTopK } from "../utils/topKUtils.js";
+import type { StorageGatewayPort } from "./indexedDbStoreGateway.js";
+import {
+	IndexedDbStoreGateway,
+	VECTOR_STORE_SCHEMA,
+} from "./indexedDbStoreGateway.js";
+import {
+	computeSimilarity,
+	computeVectorNorm,
+	cosineSimilarity,
+} from "./mathUtils.js";
+import type { VectorStoreGateway } from "./VectorStoreGateway.js";
 import {
 	createVectorWritePipeline,
 	type StoredVectorRecord,
 	type VectorWritePipeline,
 } from "./vectorWritePipeline.js";
-import {
-	IndexedDbStoreGateway,
-	VECTOR_STORE_SCHEMA,
-} from "./indexedDbStoreGateway.js";
-import type { VectorStoreGateway } from "./VectorStoreGateway.js";
-import type { StorageGatewayPort } from "./indexedDbStoreGateway.js";
-import { computeVectorNorm, computeSimilarity } from "./mathUtils.js";
-import { selectTopK } from "../utils/topKUtils.js";
-import { embedQuery } from "../utils/embeddingUtils.js";
-import { createDocument } from "../utils/documentUtils.js";
-import { cosineSimilarity } from "./mathUtils.js";
 
 export type IndexedDBVectorStoreFilter = (doc: Document) => boolean;
 
@@ -29,20 +32,6 @@ export type IndexedDBVectorStoreArgs = {
 	// stream via `iterateAll` instead of materializing the entire DB via
 	// `getAll()` to reduce memory pressure. Default: 10000.
 	getAllThreshold?: number;
-};
-
-// Use shared createDocument from documentUtils
-
-type Match = {
-	similarity: number;
-	metadata: Record<string, unknown>;
-	content: string;
-	embedding: ArrayLike<number>;
-	id: string;
-};
-
-type EmbeddingProvenanceSource = {
-	getEmbeddingProvenance?: () => Promise<string>;
 };
 
 // Bounded min-heap implementation to maintain the top-K matches more
@@ -297,10 +286,6 @@ export class IndexedDBVectorStore {
 		return records.filter((r): r is StoredVectorRecord => r !== null);
 	}
 
-	async #getAllRecords(): Promise<StoredVectorRecord[]> {
-		return this.#gateway.getAll();
-	}
-
 	async #queryVectors(
 		query: ArrayLike<number>,
 		k: number,
@@ -364,7 +349,7 @@ export class IndexedDBVectorStore {
 			})
 			.map((record) => {
 				const embedding = record.embedding as ArrayLike<number>;
-				const recordNorm = (record as any).embeddingNorm as number | undefined;
+				const recordNorm = record.embeddingNorm as number | undefined;
 				return {
 					similarity: computeSimilarityValue(embedding, recordNorm),
 					metadata: record.metadata,

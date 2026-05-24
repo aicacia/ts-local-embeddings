@@ -1,23 +1,26 @@
-import path from 'path';
-import devtoolsJson from 'vite-plugin-devtools-json';
-import tailwindcss from '@tailwindcss/vite';
-import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import path from "node:path";
+import { sveltekit } from "@sveltejs/kit/vite";
+import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "vite";
+import devtoolsJson from "vite-plugin-devtools-json";
 
-const libraryRoot = new URL('..', import.meta.url).pathname;
+const libraryRoot = new URL("..", import.meta.url).pathname;
 
 const alias = [
-	{ find: /^@aicacia\/local-embeddings$/, replacement: path.resolve(libraryRoot, 'src/index.ts') }
+	{
+		find: /^@aicacia\/local-embeddings$/,
+		replacement: path.resolve(libraryRoot, "src/index.ts"),
+	},
 ];
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit(), devtoolsJson()],
 	resolve: {
-		alias
+		alias,
 	},
 	server: {
 		fs: {
-			allow: [libraryRoot]
-		}
-	}
+			allow: [libraryRoot],
+		},
+	},
 });

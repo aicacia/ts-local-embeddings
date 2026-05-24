@@ -1,17 +1,17 @@
+import { Document } from "@langchain/core/documents";
 import test from "tape";
 import {
 	IndexedDbStoreGateway,
 	VECTOR_STORE_SCHEMA,
 } from "./indexedDbStoreGateway.js";
-import type { StoredVectorRecord } from "./vectorWritePipeline.js";
-import { createVectorWritePipeline } from "./vectorWritePipeline.js";
-import { Document } from "@langchain/core/documents";
 import {
-	installFakeIndexedDb,
 	installFailingOpenOnceIndexedDb,
+	installFakeIndexedDb,
 	patchMissingGetAll,
 	uniqueDbName,
 } from "./testUtils.js";
+import type { StoredVectorRecord } from "./vectorWritePipeline.js";
+import { createVectorWritePipeline } from "./vectorWritePipeline.js";
 
 test("IndexedDbStoreGateway open creates expected schema", async (assert) => {
 	installFakeIndexedDb();
@@ -278,10 +278,10 @@ test("VectorWritePipeline converts large number[] to Float32Array", async (asser
 	const embeddingsRuntime = {
 		embedDocuments: async (inputs: string[]) =>
 			inputs.map(() => Array.from({ length: 20 }, (_, i) => i + 0.5)),
-		embedQuery: async (doc: string) => [1],
-	} as any;
+		embedQuery: async (_doc: string) => [1],
+	};
 
-	const captured: any[] = [];
+	const captured: unknown[] = [];
 	const pipeline = createVectorWritePipeline({
 		embeddings: embeddingsRuntime,
 		resolveEmbeddingSpace: async () => "space",
@@ -294,7 +294,8 @@ test("VectorWritePipeline converts large number[] to Float32Array", async (asser
 	await pipeline.addDocuments(docs);
 	assert.equal(captured.length, docs.length, "putRecords called with records");
 	assert.ok(
-		captured[0].embedding instanceof Float32Array,
+		(captured[0] as { embedding: Float32Array }).embedding instanceof
+			Float32Array,
 		"embedding converted to Float32Array",
 	);
 

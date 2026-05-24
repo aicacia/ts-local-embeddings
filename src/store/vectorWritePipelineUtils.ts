@@ -1,18 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Document } from "@langchain/core/documents";
-import type { StoredVectorRecord } from "./vectorWritePipeline.js";
-import { computeVectorNorm } from "./mathUtils.js";
-import { isTypedArray } from "../utils/typedArrayUtils.js";
 import {
-	fallbackHash,
-	createContentHashGetter,
-	sha256,
 	type ContentHasher,
+	createContentHashGetter,
+	fallbackHash,
+	sha256,
 } from "../utils/contentHashUtils.js";
 import { stableStringify } from "../utils/stableStringify.js";
+import { isTypedArray } from "../utils/typedArrayUtils.js";
+import { computeVectorNorm } from "./mathUtils.js";
+import type { StoredVectorRecord } from "./vectorWritePipeline.js";
 
-export { fallbackHash, createContentHashGetter, sha256, stableStringify };
 export type { ContentHasher };
+export { createContentHashGetter, fallbackHash, sha256, stableStringify };
 
 const TYPED_ARRAY_CONVERSION_THRESHOLD = 16;
 
@@ -50,7 +50,7 @@ export function warnIfLargeArrayEmbedding(
 
 	for (let index = 0; index < embeddedVectors.length; index += 1) {
 		const ev = embeddedVectors[index] as unknown;
-		if (Array.isArray(ev) && (ev as any).length >= threshold) {
+		if (Array.isArray(ev) && ev.length >= threshold) {
 			// eslint-disable-next-line no-console
 			console.warn(warningMessage);
 			return true;

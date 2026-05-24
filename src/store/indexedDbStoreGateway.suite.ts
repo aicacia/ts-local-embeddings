@@ -1,9 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Suite, Deferred } from "benchmark";
-import { IndexedDbStoreGateway } from "./indexedDbStoreGateway.js";
-import type { StoredVectorRecord } from "./vectorWritePipeline.js";
+
+import type Benchmark from "benchmark";
+import type { Deferred, Suite } from "benchmark";
 import type { Constructor } from "../types.js";
+import { IndexedDbStoreGateway } from "./indexedDbStoreGateway.js";
 import { installFakeIndexedDb, uniqueDbName } from "./testUtils.js";
+import type { StoredVectorRecord } from "./vectorWritePipeline.js";
 
 function createRecord(index: number): StoredVectorRecord {
 	const content = `document-${index}`;
@@ -81,15 +83,18 @@ export default async function register(Suite: Constructor<Suite>) {
 					deferred.resolve();
 				},
 			})
-			.on("cycle", (event: any) => {
+			.on("cycle", (event: Benchmark.Event) => {
 				console.log(String(event.target));
 			})
 			.on("complete", async () => {
 				await gateway.close();
 				resolve();
 			})
-			.on("error", (event: any) => {
-				reject((event.target as Error) ?? new Error("Benchmark suite failed"));
+			.on("error", (event: Benchmark.Event) => {
+				reject(
+					(event.target as unknown as Error) ??
+						new Error("Benchmark suite failed"),
+				);
 			})
 			.run({ async: true });
 	});

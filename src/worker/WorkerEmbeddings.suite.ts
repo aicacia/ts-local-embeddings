@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Suite, Deferred } from "benchmark";
-import { WorkerEmbeddings } from "./WorkerEmbeddings.js";
+
+import type Benchmark from "benchmark";
+import type { Deferred, Suite } from "benchmark";
 import type { Constructor } from "../types.js";
+import { WorkerEmbeddings } from "./WorkerEmbeddings.js";
 
 class FakeWorker {
 	onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
@@ -144,15 +146,18 @@ export default async function register(Suite: Constructor<Suite>) {
 					deferred.resolve();
 				},
 			})
-			.on("cycle", (event: any) => {
+			.on("cycle", (event: Benchmark.Event) => {
 				console.log(String(event.target));
 			})
 			.on("complete", () => {
 				warmEmbeddings.terminate();
 				resolve();
 			})
-			.on("error", (event: any) => {
-				reject((event.target as Error) ?? new Error("Benchmark suite failed"));
+			.on("error", (event: Benchmark.Event) => {
+				reject(
+					(event.target as unknown as Error) ??
+						new Error("Benchmark suite failed"),
+				);
 			})
 			.run({ async: true });
 	});

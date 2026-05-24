@@ -1,11 +1,11 @@
+import { isDebugLoggingEnabled } from "../debug.js";
 import type {
 	ModelInstance,
 	TokenizerInstance,
 } from "../runtime/embeddingRuntime.js";
-import { isDebugLoggingEnabled } from "../debug.js";
-import { resolveTokenizerCall, resolveModelCall } from "./tokenizerModel.js";
-import { resolveBatchLimits, estimateDocumentTokenLength } from "./batching.js";
+import { estimateDocumentTokenLength, resolveBatchLimits } from "./batching.js";
 import { parseEmbeddingMatrix } from "./matrixUtils.js";
+import { resolveModelCall, resolveTokenizerCall } from "./tokenizerModel.js";
 
 type TokenizerCallOptions = {
 	padding?: boolean;
@@ -47,7 +47,7 @@ export function createEmbeddingPipeline(
 	const onEvent = options.onEvent;
 	const debugLoggingEnabled = isDebugLoggingEnabled();
 	const shouldTrackEvents = typeof onEvent === "function";
-	const maxInputTokens = (tokenizer as any).model_max_length ?? 512;
+	const maxInputTokens = tokenizer.model_max_length ?? 512;
 	const tokenizerOptions: TokenizerCallOptions = {
 		padding: true,
 		truncation: true,

@@ -1,14 +1,14 @@
 import test from "tape";
+import type {
+	EmbeddingModelFallback,
+	RuntimeLoaderPort,
+} from "./runtimeLoaderPort.js";
 import {
 	DEFAULT_MODEL_FALLBACKS,
 	DEFAULT_MODEL_ID,
 	loadModelWithFallbacks,
 	resolveRuntimePolicy,
 } from "./runtimePolicy.js";
-import type {
-	EmbeddingModelFallback,
-	RuntimeLoaderPort,
-} from "./runtimeLoaderPort.js";
 
 test("resolveRuntimePolicy uses defaults when options are empty", (assert) => {
 	const resolved = resolveRuntimePolicy();

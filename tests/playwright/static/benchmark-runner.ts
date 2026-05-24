@@ -1,13 +1,18 @@
-import * as BenchmarkModule from "benchmark";
+import * as BenchmarkBarrel from "benchmark";
 import _ from "lodash";
-const Benchmark: any = (BenchmarkModule as any).default ?? BenchmarkModule;
+
+const Benchmark = BenchmarkBarrel.default ?? BenchmarkBarrel;
 console.log(
 	"[benchmark-runner] Benchmark export keys:",
 	Object.keys(Benchmark || {}),
 );
 
+type BenchmarkModule = typeof Benchmark;
+
 declare global {
 	interface Window {
+		__expectedSuites: number;
+		__completedSuites: number;
 		__benchmarkStatus: "pending" | "complete" | "error" | null;
 		__benchmarkResults: Array<{
 			name: string;
@@ -16,6 +21,9 @@ declare global {
 			hz: number;
 		}> | null;
 		__benchmarkError: string | null;
+		Benchmark: BenchmarkModule;
+		process: typeof process;
+		test: (name: string, fn: (ctx: { end(): void }) => void) => void;
 	}
 }
 
@@ -27,18 +35,18 @@ window.__benchmarkError = null;
 // Polyfill `process` for browser environment so Node-oriented deps (tape, etc.)
 // that expect `process` don't immediately throw. Keep minimal to avoid
 // changing behavior elsewhere.
-if (typeof (window as any).process === "undefined") {
-	(window as any).process = {
+if (typeof window.process === "undefined") {
+	window.process = {
 		env: {},
-		nextTick: (cb: Function) => Promise.resolve().then(() => cb()),
+		nextTick: (cb: () => void) => Promise.resolve().then(() => cb()),
 		stdout: { write: () => {} },
 		stderr: { write: () => {} },
-	};
+	} as unknown as typeof process;
 }
 
 // Provide a minimal `test` shim for benchmark modules that expect `test(name, fn)`
-if (typeof (window as any).test === "undefined") {
-	(window as any).test = (name: string, fn: any) => {
+if (typeof window.test === "undefined") {
+	window.test = (_name, fn) => {
 		try {
 			return fn({ end: () => {} });
 		} catch (err) {
@@ -49,17 +57,18 @@ if (typeof (window as any).test === "undefined") {
 
 // Expose the Benchmark object to imported modules that may reference it.
 try {
-	(window as any).Benchmark = Benchmark;
+	window.Benchmark = Benchmark;
+	// biome-ignore lint/suspicious/noExplicitAny: global
 	(globalThis as any).Benchmark = Benchmark;
-} catch (e) {
+} catch {
 	// ignore
 }
 
 // Ensure prebundled lodash is available on the global root for Benchmark.runInContext
 try {
-	(globalThis as any)._ = _;
-	(window as any)._ = _;
-} catch (e) {
+	globalThis._ = _;
+	window._ = _;
+} catch {
 	// ignore
 }
 
@@ -76,7 +85,7 @@ const outputEl =
 function appendOutput(msg: string) {
 	try {
 		outputEl.textContent += `\n${msg}`;
-	} catch (e) {
+	} catch {
 		// ignore
 	}
 }
@@ -85,12 +94,12 @@ const originalConsoleLog = console.log.bind(console);
 console.log = (...args: unknown[]) => {
 	try {
 		originalConsoleLog(...args);
-	} catch (e) {
+	} catch {
 		// ignore
 	}
 	try {
 		appendOutput(args.map((a) => String(a)).join(" "));
-	} catch (e) {
+	} catch {
 		// ignore
 	}
 };
@@ -99,12 +108,12 @@ const originalConsoleError = console.error.bind(console);
 console.error = (...args: unknown[]) => {
 	try {
 		originalConsoleError(...args);
-	} catch (e) {
+	} catch {
 		// ignore
 	}
 	try {
 		appendOutput(`[error] ${args.map((a) => String(a)).join(" ")}`);
-	} catch (e) {
+	} catch {
 		// ignore
 	}
 };
@@ -128,22 +137,26 @@ function finalize() {
 	appendOutput("Benchmark complete");
 }
 
-function findSuite(obj: any, depth = 0, seen = new Set<any>()): any {
+function findSuite(
+	obj: BenchmarkModule,
+	depth = 0,
+	seen = new Set<unknown>(),
+): unknown {
 	if (!obj || depth > 6 || seen.has(obj)) return undefined;
 	seen.add(obj);
 	try {
 		if (obj.Suite) return obj.Suite;
-	} catch (e) {
+	} catch {
 		// ignore
 	}
 	for (const k of Object.keys(obj || {})) {
 		try {
-			const v = (obj as any)[k];
+			const v = (obj as never)[k];
 			if (v && (typeof v === "object" || typeof v === "function")) {
 				const s = findSuite(v, depth + 1, seen);
 				if (s) return s;
 			}
-		} catch (e) {
+		} catch {
 			// ignore
 		}
 	}
@@ -156,7 +169,9 @@ console.log(
 // Wrap `Benchmark.runInContext` so any calls (by this runner or by imported
 // benchmark modules) return a `Benchmark` object whose `Suite.prototype.run`
 // has been patched to notify this runner about completion and collect results.
-function patchSuitePrototype(SuiteCtor: any) {
+function patchSuitePrototype(
+	SuiteCtor: abstract new (...args: unknown[]) => BenchmarkBarrel.Suite,
+) {
 	try {
 		if (!SuiteCtor || SuiteCtor.prototype.__patchedForBenchmarkRunner) return;
 		SuiteCtor.prototype.__patchedForBenchmarkRunner = true;
@@ -173,7 +188,7 @@ function patchSuitePrototype(SuiteCtor: any) {
 						"[benchmark-runner] Suite.complete event fired, activeSuites (before) ->",
 						activeSuites,
 					);
-					this.forEach((bench: any) => {
+					this.forEach((bench: BenchmarkBarrel.Target) => {
 						try {
 							const iterations =
 								bench?.stats?.sample?.length ?? bench?.count ?? 0;
@@ -204,10 +219,9 @@ function patchSuitePrototype(SuiteCtor: any) {
 					if (activeSuites === 0) finalize();
 				}
 			});
-			// @ts-expect-error
 			return originalRun.apply(this, args);
 		};
-	} catch (e) {
+	} catch {
 		// ignore
 	}
 	// Attach per-benchmark start/complete listeners so we can emit precise
@@ -227,21 +241,25 @@ function patchSuitePrototype(SuiteCtor: any) {
 // Resolve the Suite constructor once and patch it. Use the resolved
 // constructor when invoking each suite's `register(Suite)` so the same
 // constructor is passed everywhere (avoids `Suite is not a constructor`).
-let RealBenchmark: any | undefined;
+// biome-ignore lint/complexity/noBannedTypes: benchmark is a nightmare
+let RealBenchmark: Function | undefined;
 try {
-	if (typeof (Benchmark as any)?.runInContext === "function") {
-		RealBenchmark = (Benchmark as any).runInContext();
+	if (typeof Benchmark?.runInContext === "function") {
+		RealBenchmark = Benchmark.runInContext({ end: () => undefined });
 	}
-} catch (e) {
+} catch {
 	// ignore
 }
 RealBenchmark =
 	RealBenchmark ??
 	(Benchmark &&
-		(Benchmark.Benchmark ?? (Benchmark as any).default ?? Benchmark));
+		// biome-ignore lint/suspicious/noExplicitAny: benchmark is a nightmare
+		((Benchmark as any).Benchmark ?? (Benchmark as any).default ?? Benchmark));
 const ResolvedSuite =
-	RealBenchmark?.Suite ??
+	// biome-ignore lint/suspicious/noExplicitAny: benchmark is a nightmare
+	(RealBenchmark as any)?.Suite ??
 	findSuite(Benchmark) ??
+	// biome-ignore lint/suspicious/noExplicitAny: benchmark is a nightmare
 	findSuite((Benchmark as any).default);
 patchSuitePrototype(ResolvedSuite);
 console.log("[benchmark-runner] Suite patching installed");

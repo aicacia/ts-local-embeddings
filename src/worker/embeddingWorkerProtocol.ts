@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+import type { EmbeddingPipelineEvent } from "../pipeline/createEmbeddingPipeline.js";
 import type {
 	EmbeddingRuntime,
 	LoadEmbeddingRuntimeOptions,
 } from "../runtime/embeddingRuntime.js";
-import type { EmbeddingPipelineEvent } from "../pipeline/createEmbeddingPipeline.js";
 
 export type WorkerInitPayload = {
 	options?: LoadEmbeddingRuntimeOptions;
@@ -244,8 +245,8 @@ function isDocumentsEmbeddedPayload(
 
 	// Legacy: nested number[][]
 	if (
-		Array.isArray((value as any).embeddings) &&
-		(value as any).embeddings.every(
+		Array.isArray(value.embeddings) &&
+		value.embeddings.every(
 			(vector: unknown) =>
 				Array.isArray(vector) &&
 				vector.every((entry) => typeof entry === "number"),
@@ -255,8 +256,8 @@ function isDocumentsEmbeddedPayload(
 	}
 
 	// Transferable buffer form: { embeddingsBuffer: { buffer, rows, dims } }
-	if (isObject((value as any).embeddingsBuffer)) {
-		const b = (value as any).embeddingsBuffer;
+	if (isObject(value.embeddingsBuffer)) {
+		const b = value.embeddingsBuffer;
 		if (
 			typeof b.rows === "number" &&
 			Number.isFinite(b.rows) &&
@@ -279,16 +280,14 @@ function isQueryEmbeddedPayload(
 	if (!isObject(value)) return false;
 
 	if (
-		Array.isArray((value as any).embedding) &&
-		(value as any).embedding.every(
-			(entry: unknown) => typeof entry === "number",
-		)
+		Array.isArray(value.embedding) &&
+		value.embedding.every((entry: unknown) => typeof entry === "number")
 	) {
 		return true;
 	}
 
-	if (isObject((value as any).embeddingBuffer)) {
-		const b = (value as any).embeddingBuffer;
+	if (isObject(value.embeddingBuffer)) {
+		const b = value.embeddingBuffer;
 		if (
 			typeof b.dims === "number" &&
 			Number.isFinite(b.dims) &&

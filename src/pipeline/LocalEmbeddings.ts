@@ -1,21 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import {
+	embedDocuments,
+	embedQuery,
+	packEmbeddings,
+} from "../utils/embeddingUtils.js";
+import {
 	createEmbeddingPipeline,
 	type EmbeddingPipeline,
 	type EmbeddingPipelineHooks,
 	type LocalEmbeddingsRuntime,
 } from "./createEmbeddingPipeline.js";
-import {
-	embedDocuments,
-	embedQuery,
-	packEmbeddings,
-} from "../utils/embeddingUtils.js";
 
-export type { LocalEmbeddingsRuntime } from "./createEmbeddingPipeline.js";
 export type {
 	EmbeddingPipelineEvent,
 	EmbeddingPipelineHooks,
+	LocalEmbeddingsRuntime,
 } from "./createEmbeddingPipeline.js";
 
 /**

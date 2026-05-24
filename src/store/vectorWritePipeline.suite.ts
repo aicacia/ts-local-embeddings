@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Suite, Deferred } from "benchmark";
-import { createVectorWritePipeline } from "./vectorWritePipeline.js";
+
+import type Benchmark from "benchmark";
+import type { Deferred, Suite } from "benchmark";
 import type { Constructor } from "../types.js";
 import { createDocuments } from "../utils/documentUtils.js";
+import { createVectorWritePipeline } from "./vectorWritePipeline.js";
 
 const embeddings = {
 	embedDocuments: async (documents: string[]) =>
@@ -54,7 +56,7 @@ export default function register(Suite: Constructor<Suite>) {
 					deferred.resolve();
 				},
 			})
-			.on("cycle", (event: any) => {
+			.on("cycle", (event: Benchmark.Event) => {
 				console.log(String(event.target));
 			})
 			.on("complete", () => {

@@ -8,11 +8,11 @@ export function fallbackHash(input: string): string {
 	return `fallback-${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-let __nodeCryptoModule: any | null = null;
+let __nodeCryptoModule: typeof import("node:crypto") | null = null;
 
 export async function sha256(input: string): Promise<string> {
 	try {
-		if (typeof process !== "undefined" && (process as any).versions?.node) {
+		if (typeof process !== "undefined" && process.versions?.node) {
 			if (__nodeCryptoModule === null) {
 				__nodeCryptoModule = await import("node:crypto");
 			}

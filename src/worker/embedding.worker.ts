@@ -2,17 +2,13 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { LocalEmbeddings } from "../pipeline/LocalEmbeddings.js";
 import { setDebugLogging } from "../debug.js";
-import { loadEmbeddingRuntime } from "../runtime/embeddingRuntime.js";
+import { LocalEmbeddings } from "../pipeline/LocalEmbeddings.js";
 import type { LoadEmbeddingRuntimeOptions } from "../runtime/embeddingRuntime.js";
+import { loadEmbeddingRuntime } from "../runtime/embeddingRuntime.js";
 import {
-	areLoadEmbeddingRuntimeOptionsEqual,
-	normalizeLoadEmbeddingRuntimeOptions,
-} from "./workerRuntimeOptions.js";
-import {
-	packRowsToFloat32,
 	arrayLikeToFloat32,
+	packRowsToFloat32,
 } from "../utils/typedArrayUtils.js";
 import type {
 	SerializedError,
@@ -21,11 +17,15 @@ import type {
 	WorkerResponseWithTransfer,
 } from "./embeddingWorkerProtocol.js";
 import { isWorkerRequest } from "./embeddingWorkerProtocol.js";
+import {
+	areLoadEmbeddingRuntimeOptionsEqual,
+	normalizeLoadEmbeddingRuntimeOptions,
+} from "./workerRuntimeOptions.js";
 
 let embeddings: LocalEmbeddings | null = null;
 let initializing: Promise<void> | null = null;
 let runtimeInfo: { modelId: string; variant: string } | null = null;
-let initializationOptions: LoadEmbeddingRuntimeOptions | undefined = undefined;
+let initializationOptions: LoadEmbeddingRuntimeOptions | undefined;
 let activeProgressRequestId: number | null = null;
 
 function serializeError(error: unknown): SerializedError {
@@ -220,7 +220,7 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 					// Prefer a raw packed-buffer API if the runtime exposes it. This
 					// allows the runtime to produce a transferable ArrayBuffer without
 					// an extra copy on the worker side.
-					const embedRaw = (runtimeEmbeddings as any).embedDocumentsRaw;
+					const embedRaw = runtimeEmbeddings.embedDocumentsRaw;
 					if (typeof embedRaw === "function") {
 						try {
 							const raw = await embedRaw.call(
@@ -289,7 +289,7 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 							type: "documentsEmbedded",
 							requestId: request.requestId,
 							payload: {
-								embeddings: result as any,
+								embeddings: result,
 							},
 						});
 					}
@@ -301,7 +301,7 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 			case "embedQuery": {
 				const runtimeEmbeddings = await getInitializedEmbeddings();
 				// Prefer a raw single-vector buffer API when available.
-				const embedQueryRaw = (runtimeEmbeddings as any).embedQueryRaw;
+				const embedQueryRaw = runtimeEmbeddings.embedQueryRaw;
 				if (typeof embedQueryRaw === "function") {
 					try {
 						const raw = await embedQueryRaw.call(
@@ -340,10 +340,7 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 					const view = arrayLikeToFloat32(result as ArrayLike<number>);
 					const dims = view.length;
 					let transferBuffer: ArrayBuffer;
-					if (
-						(view as any).byteOffset === 0 &&
-						view.buffer.byteLength === dims * 4
-					) {
+					if (view.byteOffset === 0 && view.buffer.byteLength === dims * 4) {
 						transferBuffer = view.buffer as ArrayBuffer;
 					} else {
 						// ensure we transfer a compact buffer matching dims
@@ -368,7 +365,7 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 						type: "queryEmbedded",
 						requestId: request.requestId,
 						payload: {
-							embedding: result as any,
+							embedding: result,
 						},
 					});
 				}

@@ -1,13 +1,13 @@
 import type { Suite } from "benchmark";
+import type { Constructor } from "../types.js";
+import { estimateDocumentTokenLength, resolveBatchLimits } from "./batching.js";
 import type { LocalEmbeddingsRuntime } from "./createEmbeddingPipeline.js";
 import { createEmbeddingPipeline } from "./createEmbeddingPipeline.js";
-import { estimateDocumentTokenLength, resolveBatchLimits } from "./batching.js";
 import {
 	invokeModel,
 	invokeTokenizer,
 	resolveMaxInputTokens,
 } from "./tokenizerModel.js";
-import type { Constructor } from "../types.js";
 
 type TestRuntime = LocalEmbeddingsRuntime;
 type TokenizerOptions = {

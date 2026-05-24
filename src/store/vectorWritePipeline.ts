@@ -2,11 +2,11 @@
 import type { Document } from "@langchain/core/documents";
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import {
+	createContentHashGetter,
 	equalVectors,
 	mapStoredVectorRecord,
 	resolveGroupKey,
 	resolveRecordId,
-	createContentHashGetter,
 } from "./vectorWritePipelineUtils.js";
 
 export { resolveRecordId };
@@ -185,8 +185,8 @@ export function createVectorWritePipeline(
 		if (
 			!raw ||
 			!(raw as { buffer?: unknown }).buffer ||
-			typeof (raw as any).rows !== "number" ||
-			typeof (raw as any).dims !== "number"
+			typeof raw.rows !== "number" ||
+			typeof raw.dims !== "number"
 		) {
 			return false;
 		}
@@ -264,7 +264,7 @@ export function createVectorWritePipeline(
 					(group) => group.representativeDocument.pageContent,
 				);
 
-				const embedRaw = (options.embeddings as any).embedDocumentsRaw;
+				const embedRaw = options.embeddings.embedDocumentsRaw;
 				if (typeof embedRaw === "function") {
 					try {
 						const wroteRaw = await tryWriteRawEmbeddedRecords(
@@ -349,7 +349,7 @@ export function createVectorWritePipeline(
 				Array.isArray(vectors) &&
 				vectors.length > 0
 			) {
-				const first = vectors[0] as any;
+				const first = vectors[0];
 				if (
 					Array.isArray(first) &&
 					first.length >= EMBEDDING_TYPED_ARRAY_RECOMMENDATION_THRESHOLD

@@ -1,26 +1,32 @@
+import * as BenchmarkBarrel from "benchmark";
 import test from "tape";
-import * as BenchmarkModule from "benchmark";
 
-const Benchmark: any = (BenchmarkModule as any).default ?? BenchmarkModule;
-let RealBenchmark: any | undefined;
+type BenchmarkModule = typeof Benchmark;
+
+const Benchmark = BenchmarkBarrel.default ?? BenchmarkBarrel;
+let RealBenchmark: BenchmarkModule | undefined;
 try {
-	if (typeof (Benchmark as any)?.runInContext === "function") {
+	if (typeof Benchmark?.runInContext === "function") {
+		// biome-ignore lint/suspicious/noExplicitAny: benchmark is a nightmare
 		RealBenchmark = (Benchmark as any).runInContext();
 	}
-} catch (e) {
+} catch {
 	// ignore
 }
 RealBenchmark =
 	RealBenchmark ??
 	(Benchmark &&
-		(Benchmark.Benchmark ?? (Benchmark as any).default ?? Benchmark));
-const Suite: any = RealBenchmark?.Suite ?? (Benchmark as any).Suite;
+		// biome-ignore lint/suspicious/noExplicitAny: benchmark is a nightmare
+		((Benchmark as any).Benchmark ?? (Benchmark as any).default ?? Benchmark));
+const Suite = (RealBenchmark?.Suite ?? Benchmark.Suite) as unknown as new (
+	...args: unknown[]
+) => BenchmarkBarrel.Suite;
 
 import embedding from "../../src/pipeline/embeddingPipeline.suite.js";
-import worker from "../../src/worker/WorkerEmbeddings.suite.js";
-import indexedDb from "../../src/store/indexedDbStoreGateway.suite.js";
 import vectorStore from "../../src/store/IndexedDBVectorStore.suite.js";
+import indexedDb from "../../src/store/indexedDbStoreGateway.suite.js";
 import vectorWrite from "../../src/store/vectorWritePipeline.suite.js";
+import worker from "../../src/worker/WorkerEmbeddings.suite.js";
 
 test("bench/suites", async (t) => {
 	try {

@@ -1,19 +1,20 @@
 /// <reference path="./benchmark-globals.d.ts" />
-import { test, expect, type TestInfo } from "@playwright/test";
+
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { BenchmarkStatus, BenchmarkResult } from "./benchmark-globals";
+import { type CDPSession, expect, type TestInfo, test } from "@playwright/test";
+import type { BenchmarkResult, BenchmarkStatus } from "./benchmark-globals";
 
 test("imports benchmark harness and runs browser benchmark", async ({
 	page,
 }, testInfo: TestInfo) => {
 	// Create a Chromium CDP session for CPU profiling (optional).
-	let cdpClient: any = null;
+	let cdpClient: CDPSession | null = null;
 	try {
 		// newCDPSession is Chromium-only; if unavailable, profiling will be skipped.
 		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-		cdpClient = await page.context().newCDPSession(page as any);
-	} catch (e) {
+		cdpClient = await page.context().newCDPSession(page);
+	} catch {
 		cdpClient = null;
 	}
 
@@ -31,7 +32,7 @@ test("imports benchmark harness and runs browser benchmark", async ({
 				const text = String(msg.text());
 				try {
 					console.log(`[browser:${msg.type()}] ${text}`);
-				} catch (e) {
+				} catch {
 					console.log(`[browser] ${String(msg)}`);
 				}
 
@@ -39,7 +40,7 @@ test("imports benchmark harness and runs browser benchmark", async ({
 				if (!cdpClient) {
 					try {
 						// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-						cdpClient = await page.context().newCDPSession(page as any);
+						cdpClient = await page.context().newCDPSession(page);
 					} catch (err) {
 						console.error("[cpuprofile] cannot create CDP session", err);
 						return;
@@ -71,7 +72,7 @@ test("imports benchmark harness and runs browser benchmark", async ({
 								);
 								try {
 									// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-									cdpClient = await page.context().newCDPSession(page as any);
+									cdpClient = await page.context().newCDPSession(page);
 									await cdpClient.send("Profiler.enable");
 									await cdpClient.send("Profiler.start");
 									profilerActive = true;
@@ -167,7 +168,7 @@ test("imports benchmark harness and runs browser benchmark", async ({
 							console.error("[cpuprofile] stop failed", err);
 						}
 					}
-				} catch (err) {
+				} catch {
 					// swallow errors from profiling handler so benchmark-runner continues
 				}
 			})

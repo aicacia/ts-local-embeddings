@@ -1,13 +1,13 @@
 import type { EmbeddingsInterface } from "@langchain/core/embeddings";
-import type { LoadEmbeddingRuntimeOptions } from "../runtime/embeddingRuntime.js";
 import { isDebugLoggingEnabled } from "../debug.js";
+import type { LoadEmbeddingRuntimeOptions } from "../runtime/embeddingRuntime.js";
+import { packEmbeddings } from "../utils/embeddingUtils.js";
 import type {
+	SerializedError,
 	WorkerRequestMap,
 	WorkerResponseMap,
-	SerializedError,
 	WorkerSuccessResponse,
 } from "./embeddingWorkerProtocol.js";
-import type { WorkerPort } from "./workerPort.js";
 import {
 	isSerializedError,
 	isWorkerResponse,
@@ -19,7 +19,7 @@ import {
 	mapDocumentsEmbeddedResponse,
 	mapQueryEmbeddedResponse,
 } from "./workerEmbeddingsUtils.js";
-import { packEmbeddings } from "../utils/embeddingUtils.js";
+import type { WorkerPort } from "./workerPort.js";
 
 export type WorkerEmbeddingsOptions = {
 	runtime?: LoadEmbeddingRuntimeOptions;

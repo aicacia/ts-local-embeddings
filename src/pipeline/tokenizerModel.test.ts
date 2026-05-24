@@ -1,15 +1,21 @@
 import test from "tape";
+import type {
+	ModelInstance,
+	TokenizerInstance,
+} from "../runtime/embeddingRuntime.js";
 import {
-	resolveMaxInputTokens,
-	invokeTokenizer,
 	invokeModel,
+	invokeTokenizer,
+	resolveMaxInputTokens,
 } from "./tokenizerModel.js";
 
 test("resolveMaxInputTokens uses tokenizer and model config", (t) => {
-	const tokenizer: any = Object.assign((docs: string[]) => docs, {
+	const tokenizer = Object.assign((docs: string[]) => docs, {
 		model_max_length: 128,
-	});
-	const model: any = { config: { max_position_embeddings: 64 } };
+	}) as unknown as TokenizerInstance;
+	const model = {
+		config: { max_position_embeddings: 64 },
+	} as unknown as ModelInstance;
 
 	const resolved = resolveMaxInputTokens(tokenizer, model);
 	t.equal(resolved, 64, "chooses the smaller of tokenizer and model limits");
@@ -17,18 +23,24 @@ test("resolveMaxInputTokens uses tokenizer and model config", (t) => {
 });
 
 test("invokeTokenizer and invokeModel support function and _call styles", async (t) => {
-	const tokenizerFn = (documents: string[], options: any) => ({
+	const tokenizerFn = (documents: string[], options: unknown) => ({
 		documents,
 		options,
 	});
-	const tokenizerObj = { _call: tokenizerFn, model_max_length: 16 };
+	const tokenizerObj = {
+		_call: tokenizerFn,
+		model_max_length: 16,
+	} as unknown as TokenizerInstance;
 
-	const modelFn = async (inputs: any) => ({
+	const modelFn = async (_inputs: unknown) => ({
 		sentence_embedding: { tolist: () => [[1, 2]] },
 	});
-	const modelObj = { _call: modelFn, config: { max_position_embeddings: 16 } };
+	const modelObj = {
+		_call: modelFn,
+		config: { max_position_embeddings: 16 },
+	} as ModelInstance;
 
-	const tokOut = invokeTokenizer(tokenizerObj as any, ["a"], {
+	const tokOut = invokeTokenizer(tokenizerObj, ["a"], {
 		max_length: 16,
 	});
 	t.deepEqual(
@@ -37,9 +49,9 @@ test("invokeTokenizer and invokeModel support function and _call styles", async 
 		"tokenizer _call invoked",
 	);
 
-	const modelOut = await invokeModel(modelObj as any, {});
+	const modelOut = await invokeModel(modelObj, {});
 	t.ok(
-		(modelOut as any).sentence_embedding.tolist,
+		modelOut.sentence_embedding.tolist,
 		"model _call invoked and returns sentence_embedding with tolist",
 	);
 

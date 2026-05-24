@@ -1,9 +1,9 @@
+import type { AutoModel, AutoTokenizer } from "@huggingface/transformers";
 import type {
 	EmbeddingModelFallback,
 	RuntimeLoaderArgs,
 	RuntimeLoaderPort,
 } from "./runtimeLoaderPort.js";
-import type { AutoModel, AutoTokenizer } from "@huggingface/transformers";
 
 // Lazy-load heavy `@huggingface/transformers` at runtime to avoid bundling
 // large libraries into the main UI bundle. Methods perform dynamic imports

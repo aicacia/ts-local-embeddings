@@ -5,8 +5,8 @@ import type {
 	WorkerResponse,
 	WorkerSuccessResponse,
 } from "./embeddingWorkerProtocol.js";
-import type { WorkerPort } from "./workerPort.js";
 import { WorkerChannel } from "./workerChannel.js";
+import type { WorkerPort } from "./workerPort.js";
 
 class FakeWorker implements WorkerPort {
 	onmessage: ((event: MessageEvent<WorkerResponse>) => void) | null = null;

@@ -1,10 +1,10 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
-import adapter from '@sveltejs/adapter-static';
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import adapter from "@sveltejs/adapter-static";
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
-const dev = process.argv.includes('dev');
-const base = dev ? '' : (process.env.BASE_PATH ?? '');
+const dev = process.argv.includes("dev");
+const base = dev ? "" : (process.env.BASE_PATH ?? "");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('@sveltejs/kit').Config} */
@@ -15,12 +15,12 @@ const config = {
 	kit: {
 		adapter: adapter(),
 		paths: {
-			base
+			base,
 		},
 		alias: {
-			'@aicacia/local-embeddings': path.resolve(__dirname, '../src/index.ts')
-		}
-	}
+			"@aicacia/local-embeddings": path.resolve(__dirname, "../src/index.ts"),
+		},
+	},
 };
 
 export default config;

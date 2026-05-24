@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Suite, Deferred } from "benchmark";
-import { IndexedDBVectorStore } from "./IndexedDBVectorStore.js";
+
+import type Benchmark from "benchmark";
+import type { Deferred, Suite } from "benchmark";
 import type { Constructor } from "../types.js";
 import { createDocuments } from "../utils/documentUtils.js";
+import { IndexedDBVectorStore } from "./IndexedDBVectorStore.js";
 import { installFakeIndexedDb, uniqueDbName } from "./testUtils.js";
 
 const embeddings = {
@@ -15,7 +17,6 @@ export default async function register(Suite: Constructor<Suite>) {
 	installFakeIndexedDb();
 
 	const uniqueDocs = createDocuments(100, "unique-document");
-	const duplicateDocs = createDocuments(100, "duplicate-document");
 	const identicalDocs = createDocuments(100, "duplicate-document");
 
 	const populatedStore = new IndexedDBVectorStore(embeddings, {
@@ -68,15 +69,18 @@ export default async function register(Suite: Constructor<Suite>) {
 					deferred.resolve();
 				},
 			})
-			.on("cycle", (event: any) => {
+			.on("cycle", (event: Benchmark.Event) => {
 				console.log(String(event.target));
 			})
 			.on("complete", async () => {
 				await populatedStore.close();
 				resolve();
 			})
-			.on("error", (event: any) => {
-				reject((event.target as Error) ?? new Error("Benchmark suite failed"));
+			.on("error", (event: Benchmark.Event) => {
+				reject(
+					(event.target as unknown as Error) ??
+						new Error("Benchmark suite failed"),
+				);
 			})
 			.run({ async: true });
 	});
