@@ -34,7 +34,9 @@
 			"!cjs",
 			"!esm",
 			"!types",
-			"!github-pages/.svelte-kit"
+			"!node_modules",
+			"!github-pages/.svelte-kit",
+			"!github-pages/build"
 		]
 	}
 }

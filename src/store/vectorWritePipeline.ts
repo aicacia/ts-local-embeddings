@@ -185,8 +185,10 @@ export function createVectorWritePipeline(
 		if (
 			!raw ||
 			!(raw as { buffer?: unknown }).buffer ||
-			typeof raw.rows !== "number" ||
-			typeof raw.dims !== "number"
+			// biome-ignore lint/suspicious/noExplicitAny: FIXME
+			typeof (raw as any).rows !== "number" ||
+			// biome-ignore lint/suspicious/noExplicitAny: FIXME
+			typeof (raw as any).dims !== "number"
 		) {
 			return false;
 		}
@@ -264,7 +266,8 @@ export function createVectorWritePipeline(
 					(group) => group.representativeDocument.pageContent,
 				);
 
-				const embedRaw = options.embeddings.embedDocumentsRaw;
+				// biome-ignore lint/suspicious/noExplicitAny: FIXME
+				const embedRaw = (options.embeddings as any).embedDocumentsRaw;
 				if (typeof embedRaw === "function") {
 					try {
 						const wroteRaw = await tryWriteRawEmbeddedRecords(

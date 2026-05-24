@@ -230,14 +230,17 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 							if (
 								raw &&
 								(raw.buffer instanceof ArrayBuffer ||
-									(raw.buffer && raw.buffer.buffer instanceof ArrayBuffer)) &&
+									(raw.buffer &&
+										// biome-ignore lint/suspicious/noExplicitAny: FIXME
+										(raw.buffer as any).buffer instanceof ArrayBuffer)) &&
 								typeof raw.rows === "number" &&
 								typeof raw.dims === "number"
 							) {
 								const buffer =
 									raw.buffer instanceof ArrayBuffer
 										? raw.buffer
-										: raw.buffer.buffer;
+										: // biome-ignore lint/suspicious/noExplicitAny: FIXME
+											(raw.buffer as any).buffer;
 								const response: WorkerResponseWithTransfer = {
 									type: "documentsEmbedded",
 									requestId: request.requestId,
@@ -289,7 +292,7 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 							type: "documentsEmbedded",
 							requestId: request.requestId,
 							payload: {
-								embeddings: result,
+								embeddings: result as number[][],
 							},
 						});
 					}
@@ -301,7 +304,9 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 			case "embedQuery": {
 				const runtimeEmbeddings = await getInitializedEmbeddings();
 				// Prefer a raw single-vector buffer API when available.
-				const embedQueryRaw = runtimeEmbeddings.embedQueryRaw;
+				// biome-ignore lint/suspicious/noExplicitAny: this makes no sense FIXME
+				const embedQueryRaw = (runtimeEmbeddings as any).embedQueryRaw;
+
 				if (typeof embedQueryRaw === "function") {
 					try {
 						const raw = await embedQueryRaw.call(
@@ -365,7 +370,7 @@ async function handleRequest(request: WorkerRequest): Promise<void> {
 						type: "queryEmbedded",
 						requestId: request.requestId,
 						payload: {
-							embedding: result,
+							embedding: result as number[],
 						},
 					});
 				}

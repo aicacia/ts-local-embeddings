@@ -46,10 +46,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build library
-        run: pnpm --filter @aicacia/local-embeddings build
+        run: pnpm build
 
       - name: Build Svelte
-        run: pnpm --filter @aicacia/local-embeddings-github-pages build
+        run: pnpm github-pages:build
         env:
           BASE_PATH: /${{ github.event.repository.name }}
 
